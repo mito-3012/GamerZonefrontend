@@ -14,7 +14,6 @@ const validarRutChileno = (rutCompleto) => {
     return false;
   }
   
-  // Limpiar puntos y guiones por si el usuario los pone
   const rutLimpio = rutCompleto.replace(/[^0-9kK]/g, '').toUpperCase();
   if (rutLimpio.length < 2) return false;
 
@@ -37,18 +36,14 @@ const validarRutChileno = (rutCompleto) => {
 
 // --- FUNCIÓN PARA VALIDAR EL CORREO ---
 const validarCorreo = (correo) => {
-  // Verifica que tenga @ y que termine en uno de los dominios solicitados
   const regex = /^[a-zA-Z0-9._%+-]+@(duoc\.cl|profesor\.duoc\.cl|gmail\.com)$/i;
   return regex.test(correo);
 };
 
 export default function Registro() {
   const navigate = useNavigate();
+  const [cargando, setCargando] = useState(false);
 
-  // Estado para simular una base de datos de usuarios
-  const [usuariosRegistrados, setUsuariosRegistrados] = useState([]);
-
-  // Estado inicial del formulario (lo guardamos en una constante para reutilizarlo al limpiar)
   const initialState = {
     run: '',
     name: '',
@@ -68,12 +63,12 @@ export default function Registro() {
     
     setFormData((prev) => {
       const newData = { ...prev, [id]: value };
-      if (id === 'region') newData.comuna = ''; // Reiniciar comuna si cambia la región
+      if (id === 'region') newData.comuna = '';
       return newData;
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     // 1. Validar que no haya campos vacíos
@@ -105,27 +100,42 @@ export default function Registro() {
       return;
     }
 
-    // 5. Validar duplicidad de RUT o Correo
-    const existeUsuario = usuariosRegistrados.some(
-      (user) => user.run.toUpperCase() === formData.run.toUpperCase() || user.email.toLowerCase() === formData.email.toLowerCase()
-    );
+    // --- ENVÍO REAL AL BACKEND (SPRING BOOT + BASE DE DATOS) ---
+    setCargando(true);
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+      const response = await fetch(`${API_URL}/api/usuarios`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          run: formData.run.replace(/[^0-9kK]/g, '').toUpperCase(),
+          nombre: formData.name.trim(),
+          apellido: formData.lastname.trim(),
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password,
+          region: formData.region,
+          comuna: formData.comuna,
+          direccion: `${formData.address.trim()}, ${formData.comuna}, ${formData.region}`
+        })
+      });
 
-    if (existeUsuario) {
-      alert("Error: Ya existe una cuenta registrada con este RUT o Correo Electrónico.");
-      return;
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Error al registrar el usuario en la base de datos.");
+      }
+
+      alert(`¡Registro exitoso en la base de datos! Bienvenido ${formData.name}`);
+      setFormData(initialState);
+      navigate('/login');
+    } catch (error) {
+      console.error("Error en registro:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setCargando(false);
     }
-
-    // --- REGISTRO EXITOSO ---
-    // Guardar usuario en nuestra "base de datos" simulada
-    setUsuariosRegistrados(prev => [...prev, formData]);
-    
-    alert(`¡Registro exitoso! Bienvenido ${formData.name}`);
-    
-    // Limpiar los campos del formulario volviendo al estado inicial
-    setFormData(initialState);
-
-    // Si deseas redirigir después del éxito, descomenta esta línea:
-    // navigate('/login'); 
   };
 
   const comunasDisponibles = formData.region ? regionesYComunas[formData.region] : [];
@@ -263,8 +273,8 @@ export default function Registro() {
               />
             </div>
 
-            <button type="submit" className="btn btn-primary btn-block">
-              CREAR CUENTA GAMER
+            <button type="submit" className="btn btn-primary btn-block" disabled={cargando}>
+              {cargando ? "GUARDANDO EN BASE DE DATOS..." : "CREAR CUENTA GAMER"}
             </button>
           </form>
         </div>
