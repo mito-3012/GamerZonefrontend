@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useShop } from '../context/ShopContext';
@@ -10,17 +9,47 @@ const API_URL = (
 const formatoCLP = (valor) =>
   Number(valor || 0).toLocaleString('es-CL');
 
-export default function Pago({ usuario, direccionDespacho }) {
-  const { carrito, totalCarrito } = useShop();
+export default function Pago({ usuario: usuarioProp, direccionDespacho: direccionProp }) {
+  const shop = useShop();
+  const { carrito = [], totalCarrito = 0, vaciarCarrito } = shop;
 
+  // Resuelve el usuario desde props, contexto o localStorage (soporta id o idUsuario)
+  const usuarioStorage = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('usuario') || 'null');
+    } catch {
+      return null;
+    }
+  })();
+
+  const usuarioActual = usuarioProp || shop.usuario || usuarioStorage;
+  const idUsuarioFinal = usuarioActual?.idUsuario ?? usuarioActual?.id ?? 1;
+
+  const [direccion, setDireccion] = useState(
+    direccionProp || usuarioActual?.direccion || ''
+  );
   const [metodoPago, setMetodoPago] = useState('TARJETA_DEBITO');
   const [procesando, setProcesando] = useState(false);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
 
+  // Estados para el simulador de tarjeta
+  const [datosTarjeta, setDatosTarjeta] = useState({
+    numero: '',
+    titular: usuarioActual ? `${usuarioActual.nombre || ''} ${usuarioActual.apellido || ''}`.trim() : '',
+    expiracion: '',
+    cvv: ''
+  });
+
+  const esTarjeta = metodoPago === 'TARJETA_CREDITO' || metodoPago === 'TARJETA_DEBITO';
   const monto = Number(totalCarrito || 0);
 
-  // Crea el pedido en el backend y recibe su ID generado por MySQL.
+  const handleTarjetaChange = (e) => {
+    const { name, value } = e.target;
+    setDatosTarjeta((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // 1. Crea el pedido en el backend y recibe su ID generado
   const crearPedido = async () => {
     const response = await fetch(
       `${API_URL}/api/pedidos/crear-desde-carrito`,
@@ -30,8 +59,8 @@ export default function Pago({ usuario, direccionDespacho }) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          idUsuario: usuario.idUsuario,
-          direccionDespacho,
+          idUsuario: idUsuarioFinal,
+          direccionDespacho: direccion.trim(),
           items: carrito.map((item) => ({
             idProducto: item.idProducto ?? item.id,
             cantidad: Number(item.cantidad)
@@ -46,20 +75,28 @@ export default function Pago({ usuario, direccionDespacho }) {
       throw new Error(
         pedido.message ||
         pedido.detail ||
+        pedido.error ||
         'No se pudo crear el pedido.'
       );
     }
 
-    if (!pedido.idPedido || pedido.total == null) {
+    const idPedidoGenerado = pedido.idPedido ?? pedido.id;
+    const totalGenerado = pedido.total ?? monto;
+
+    if (!idPedidoGenerado) {
       throw new Error(
-        'El backend no devolvió el ID o el total del pedido.'
+        'El backend no devolvió el ID del pedido.'
       );
     }
 
-    return pedido;
+    return {
+      ...pedido,
+      idPedido: idPedidoGenerado,
+      total: Number(totalGenerado)
+    };
   };
 
-  // Registra el pago utilizando el pedido generado.
+  // 2. Registra el pago utilizando el pedido generado
   const registrarPago = async (pedido) => {
     const response = await fetch(`${API_URL}/api/pagos`, {
       method: 'POST',
@@ -69,7 +106,9 @@ export default function Pago({ usuario, direccionDespacho }) {
       body: JSON.stringify({
         idPedido: pedido.idPedido,
         metodoPago,
-        monto: Number(pedido.total)
+        monto: Number(pedido.total),
+        numeroTarjeta: esTarjeta ? datosTarjeta.numero.replace(/\s+/g, '') : null,
+        titularTarjeta: esTarjeta ? datosTarjeta.titular : null
       })
     });
 
@@ -79,6 +118,7 @@ export default function Pago({ usuario, direccionDespacho }) {
       throw new Error(
         data.message ||
         data.detail ||
+        data.error ||
         'No fue posible registrar el pago.'
       );
     }
@@ -93,39 +133,45 @@ export default function Pago({ usuario, direccionDespacho }) {
     setResultado(null);
 
     if (!carrito.length || monto <= 0) {
-      setError(
-        'Tu carrito está vacío. Agrega productos antes de continuar.'
-      );
+      setError('Tu carrito está vacío. Agrega productos antes de continuar.');
       return;
     }
 
-    if (!usuario?.idUsuario || !direccionDespacho) {
-      setError(
-        'Falta la información del usuario o la dirección de entrega.'
-      );
+    if (!direccion.trim()) {
+      setError('Por favor, ingresa una dirección de despacho.');
       return;
+    }
+
+    if (esTarjeta) {
+      const numLimpio = datosTarjeta.numero.replace(/\s+/g, '');
+      if (numLimpio.length < 13 || !datosTarjeta.titular.trim() || !datosTarjeta.expiracion.trim() || datosTarjeta.cvv.length < 3) {
+        setError('Completa correctamente todos los datos de la tarjeta simulada.');
+        return;
+      }
     }
 
     setProcesando(true);
 
     try {
-      // 1. Crear el pedido.
+      // 1. Crear el pedido
       const pedido = await crearPedido();
 
-      // 2. Registrar el pago con el ID generado.
+      // 2. Registrar el pago con el ID generado
       const pago = await registrarPago(pedido);
 
-      // 3. Mostrar la confirmación.
+      // 3. Vaciar carrito si la función existe en el contexto
+      if (typeof vaciarCarrito === 'function') {
+        vaciarCarrito();
+      }
+
+      // 4. Mostrar la confirmación
       setResultado({
         ...pago,
         idPedido: pedido.idPedido,
         monto: Number(pedido.total)
       });
-
     } catch (err) {
-      setError(
-        err.message || 'No se pudo conectar con el servidor.'
-      );
+      setError(err.message || 'No se pudo conectar con el servidor.');
     } finally {
       setProcesando(false);
     }
@@ -145,8 +191,7 @@ export default function Pago({ usuario, direccionDespacho }) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns:
-            'minmax(0, 1.5fr) minmax(280px, 1fr)',
+          gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)',
           gap: 24,
           alignItems: 'start'
         }}
@@ -155,7 +200,7 @@ export default function Pago({ usuario, direccionDespacho }) {
           {resultado ? (
             <div role="status">
               <h2 style={{ color: '#198754' }}>
-                Pago {resultado.estado}
+                Pago {resultado.estado || 'APROBADO'}
               </h2>
 
               <p>
@@ -171,9 +216,11 @@ export default function Pago({ usuario, direccionDespacho }) {
 
               <p>Método: {resultado.metodoPago}</p>
 
-              <p>
-                Referencia: {resultado.referenciaTransaccion}
-              </p>
+              {resultado.referenciaTransaccion && (
+                <p>
+                  Referencia: <strong>{resultado.referenciaTransaccion}</strong>
+                </p>
+              )}
 
               <Link className="btn btn-primary" to="/productos">
                 Volver a la tienda
@@ -185,20 +232,27 @@ export default function Pago({ usuario, direccionDespacho }) {
               style={{ display: 'grid', gap: 18 }}
             >
               <h2 style={{ margin: 0 }}>
-                Método de pago
+                Datos de envío y método de pago
               </h2>
 
-              <p>
-                Tu número de pedido se generará
-                automáticamente al continuar.
-              </p>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <strong>Dirección de despacho</strong>
+                <input
+                  className="form-control"
+                  type="text"
+                  placeholder="Ej: Av. Concha y Toro 1340, Puente Alto"
+                  value={direccion}
+                  onChange={(e) => setDireccion(e.target.value)}
+                  required
+                />
+              </label>
 
               <div style={{ display: 'grid', gap: 10 }}>
                 {[
-                  ['TARJETA_CREDITO', 'Tarjeta de crédito'],
-                  ['TARJETA_DEBITO', 'Tarjeta de débito'],
+                  ['TARJETA_DEBITO', 'Tarjeta de débito (Simulador)'],
+                  ['TARJETA_CREDITO', 'Tarjeta de crédito (Simulador)'],
                   ['TRANSFERENCIA', 'Transferencia bancaria'],
-                  ['EFECTIVO', 'Efectivo']
+                  ['EFECTIVO', 'Efectivo contra entrega']
                 ].map(([value, label]) => (
                   <label
                     key={value}
@@ -208,10 +262,10 @@ export default function Pago({ usuario, direccionDespacho }) {
                       gap: 12,
                       border:
                         metodoPago === value
-                          ? '1px solid #343a40'
+                          ? '2px solid #0d6efd'
                           : '1px solid #dee2e6',
                       borderRadius: 10,
-                      padding: 16,
+                      padding: 14,
                       cursor: 'pointer'
                     }}
                   >
@@ -220,19 +274,111 @@ export default function Pago({ usuario, direccionDespacho }) {
                       name="metodoPago"
                       value={value}
                       checked={metodoPago === value}
-                      onChange={(e) =>
-                        setMetodoPago(e.target.value)
-                      }
+                      onChange={(e) => setMetodoPago(e.target.value)}
                     />
-
                     <span>{label}</span>
                   </label>
                 ))}
               </div>
 
+              {/* --- SIMULADOR VISUAL DE TARJETA (Se abre automáticamente al elegir Débito o Crédito) --- */}
+              {esTarjeta && (
+                <div
+                  style={{
+                    border: '1px solid #ced4da',
+                    borderRadius: 12,
+                    padding: 20,
+                    backgroundColor: '#f8f9fa',
+                    display: 'grid',
+                    gap: 14
+                  }}
+                >
+                  {/* Tarjeta gráfica simulada */}
+                  <div
+                    style={{
+                      background: 'linear-gradient(135deg, #1a1f36 0%, #0d6efd 100%)',
+                      color: '#fff',
+                      borderRadius: 12,
+                      padding: 20,
+                      display: 'grid',
+                      gap: 14,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, opacity: 0.9 }}>
+                      <span>GAMERZONE PAY</span>
+                      <span>{metodoPago === 'TARJETA_CREDITO' ? 'CRÉDITO' : 'DÉBITO'}</span>
+                    </div>
+                    <div style={{ fontSize: 20, letterSpacing: 2, fontFamily: 'monospace' }}>
+                      {datosTarjeta.numero || '4532 •••• •••• 9012'}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+                      <span>{(datosTarjeta.titular || 'NOMBRE DEL TITULAR').toUpperCase()}</span>
+                      <span>{datosTarjeta.expiracion || 'MM/AA'}</span>
+                    </div>
+                  </div>
+
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <small>Número de tarjeta</small>
+                    <input
+                      className="form-control"
+                      type="text"
+                      name="numero"
+                      maxLength="19"
+                      placeholder="4532 1234 5678 9012"
+                      value={datosTarjeta.numero}
+                      onChange={handleTarjetaChange}
+                      required
+                    />
+                  </label>
+
+                  <label style={{ display: 'grid', gap: 4 }}>
+                    <small>Nombre del titular</small>
+                    <input
+                      className="form-control"
+                      type="text"
+                      name="titular"
+                      placeholder="Como aparece en la tarjeta"
+                      value={datosTarjeta.titular}
+                      onChange={handleTarjetaChange}
+                      required
+                    />
+                  </label>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <small>Vencimiento (MM/AA)</small>
+                      <input
+                        className="form-control"
+                        type="text"
+                        name="expiracion"
+                        maxLength="5"
+                        placeholder="08/29"
+                        value={datosTarjeta.expiracion}
+                        onChange={handleTarjetaChange}
+                        required
+                      />
+                    </label>
+
+                    <label style={{ display: 'grid', gap: 4 }}>
+                      <small>Código CVV</small>
+                      <input
+                        className="form-control"
+                        type="password"
+                        name="cvv"
+                        maxLength="4"
+                        placeholder="123"
+                        value={datosTarjeta.cvv}
+                        onChange={handleTarjetaChange}
+                        required
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <label style={{ display: 'grid', gap: 8 }}>
                 Monto a pagar (CLP)
-
                 <input
                   className="form-control"
                   type="text"
@@ -240,17 +386,15 @@ export default function Pago({ usuario, direccionDespacho }) {
                   readOnly
                   aria-readonly="true"
                 />
-
                 <small>
-                  El monto se calcula automáticamente
-                  con el total actual del carrito.
+                  El monto se calcula automáticamente con el total actual del carrito.
                 </small>
               </label>
 
               {error && (
                 <p
                   role="alert"
-                  style={{ color: '#dc3545', margin: 0 }}
+                  style={{ color: '#dc3545', margin: 0, fontWeight: 500 }}
                 >
                   {error}
                 </p>
@@ -261,14 +405,11 @@ export default function Pago({ usuario, direccionDespacho }) {
                 type="submit"
                 disabled={procesando || monto <= 0}
               >
-                {procesando
-                  ? 'Procesando...'
-                  : 'Confirmar pago'}
+                {procesando ? 'Procesando pago...' : `Pagar $${formatoCLP(monto)} CLP`}
               </button>
 
               <small>
-                Pago de demostración: no se realizan
-                cobros bancarios reales.
+                Pago de demostración: no se realizan cobros bancarios reales.
               </small>
             </form>
           )}
@@ -291,8 +432,7 @@ export default function Pago({ usuario, direccionDespacho }) {
             <span>
               Productos (
               {carrito.reduce(
-                (total, item) =>
-                  total + Number(item.cantidad || 0),
+                (total, item) => total + Number(item.cantidad || 0),
                 0
               )}
               )

@@ -1,7 +1,42 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
+
+const API_URL = (
+  import.meta.env.VITE_API_URL || 'http://localhost:8080'
+).replace(/\/$/, '');
 
 export default function Blogs() {
+  const { carrito = [] } = useShop();
+  const [noticias, setNoticias] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+
+  const totalItems = carrito.reduce(
+    (total, item) => total + Number(item.cantidad || 0),
+    0
+  );
+
+  useEffect(() => {
+    const cargarNoticias = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/noticias`);
+        if (!response.ok) {
+          throw new Error('No se pudieron cargar las noticias desde el servidor.');
+        }
+        const data = await response.json();
+        setNoticias(data);
+      } catch (err) {
+        console.error('Error al obtener noticias:', err);
+        setError(err.message || 'Error de conexión con la base de datos.');
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    cargarNoticias();
+  }, []);
+
   return (
     <div>
       <header className="main-header">
@@ -20,7 +55,7 @@ export default function Blogs() {
 
         <div className="header-right">
           <Link to="/carrito" className="cart-btn">
-            🛒 Cart (<span id="cart-count">0</span>)
+            🛒 Cart (<span id="cart-count">{totalItems}</span>)
           </Link>
         </div>
       </header>
@@ -35,46 +70,54 @@ export default function Blogs() {
           Mantente al día con las novedades, juegos y consejos del mundo gamer.
         </p>
 
-        <div className="blog-grid">
-          {/* PRIMERA NOTICIA */}
-          <article className="blog-card">
-            <img src="../blog-1.jpg" alt="Novedades del mundo gamer" className="blog-img" />
-            <div className="blog-card-content">
-              <h2>Las novedades que están marcando el mundo gamer</h2>
-              <p>
-                Sony ha patentado una tecnología que le sentaría genial a PS6.
-              </p>
-              <a 
-                href="https://www.3djuegos.com/ps5/noticias/sony-ha-patentado-tecnologia-que-le-sentaria-genial-a-ps6" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="btn btn-primary"
-              >
-                Leer noticia
-              </a>
-            </div>
-          </article>
+        {cargando && (
+          <p style={{ color: 'var(--text-muted)' }}>Cargando noticias desde la base de datos...</p>
+        )}
 
-          {/* SEGUNDA NOTICIA */}
-          <article className="blog-card">
-            <img src="../blog1.jpg" alt="Guía de periféricos competitivos" className="blog-img" />
-            <div className="blog-card-content">
-              <h2>Últimas noticias de Videojuegos</h2>
-              <p>
-                Descubre todas las novedades y la actualidad del mundo de los videojuegos. 
-                Mantente informado minuto a minuto sobre actualizaciones, fechas de lanzamiento,
-                 anuncios importantes y tráileres de tus títulos preferidos.
-              </p>
-              <a 
-                href="https://vandal.elespanol.com/noticias/videojuegos" 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="btn btn-primary"
-              >
-                Leer noticia
-              </a>
-            </div>
-          </article>
+        {error && (
+          <p style={{ color: '#dc3545', fontWeight: 500 }}>{error}</p>
+        )}
+
+        {!cargando && !error && noticias.length === 0 && (
+          <p style={{ color: 'var(--text-muted)' }}>
+            No hay noticias registradas en la base de datos aún.
+          </p>
+        )}
+
+        <div className="blog-grid">
+          {noticias.map((noticia) => (
+            <article className="blog-card" key={noticia.id}>
+              <img
+                src={noticia.imagenUrl || '/blog-1.jpg'}
+                alt={noticia.titulo}
+                className="blog-img"
+              />
+              <div className="blog-card-content">
+                <h2>{noticia.titulo}</h2>
+
+                {/* Párrafos cargados desde la base de datos */}
+                <p>{noticia.parrafoPrincipal}</p>
+
+                {noticia.parrafoSecundario && (
+                  <p style={{ marginTop: '8px' }}>
+                    {noticia.parrafoSecundario}
+                  </p>
+                )}
+
+                {/* Link externo cargado desde la base de datos */}
+                {noticia.linkExterno && (
+                  <a
+                    href={noticia.linkExterno}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary"
+                  >
+                    {noticia.textoLink || 'Leer noticia'}
+                  </a>
+                )}
+              </div>
+            </article>
+          ))}
         </div>
       </main>
     </div>
