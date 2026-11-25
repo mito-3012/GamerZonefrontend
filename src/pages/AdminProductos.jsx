@@ -47,6 +47,7 @@ export default function AdminProductos() {
         <nav className="sidebar-nav">
           <Link to="/admin-home">📊 DASHBOARD</Link>
           <Link to="/admin-productos" className="active">🎮 INVENTARIO</Link>
+          <Link to="/admin-pedidos">📦 PEDIDOS</Link>
           <Link to="/admin-usuarios">👥 USUARIOS</Link>
           <Link to="/">🛍️ IR A TIENDA</Link>
           <a

@@ -25,6 +25,7 @@ export default function AdminUsuarios() {
         <nav className="sidebar-nav">
           <Link to="/admin-home">📊 DASHBOARD</Link>
           <Link to="/admin-productos">🎮 INVENTARIO</Link>
+          <Link to="/admin-pedidos">📦 PEDIDOS</Link>
           <Link to="/admin-usuarios" className="active">👥 USUARIOS</Link>
           <Link to="/">🛍️ IR A TIENDA</Link>
           <a

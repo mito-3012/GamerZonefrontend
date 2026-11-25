@@ -13,7 +13,6 @@ export default function AdminNuevoUsuario() {
     region: '',
     comuna: '',
     address: '',
-    // password: '', // Nota: Si el usuario va a iniciar sesión, probablemente necesites un campo para la contraseña
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -35,7 +34,6 @@ export default function AdminNuevoUsuario() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // 1. Validación básica (puedes agregar más según necesites)
     if (!formData.role || !formData.run || !formData.name || !formData.email) {
       alert('Por favor, completa al menos los campos obligatorios (Rol, RUN, Nombre, Email).');
       return;
@@ -44,21 +42,17 @@ export default function AdminNuevoUsuario() {
     setIsLoading(true);
 
     try {
-      // 2. Enviar los datos al Backend
-      // REEMPLAZA la URL por la ruta real de tu API (ej: http://localhost:3000/api/usuarios)
       const response = await fetch('http://tu-api-backend.com/api/usuarios', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // 'Authorization': `Bearer ${localStorage.getItem('token')}` // Descomenta si usas JWT para autenticación
         },
         body: JSON.stringify(formData),
       });
 
-      // 3. Manejar la respuesta
       if (response.ok) {
         alert('¡Usuario creado exitosamente!');
-        navigate('/admin-usuarios'); // Redirige a la lista de usuarios tras el éxito
+        navigate('/admin-usuarios');
       } else {
         const errorData = await response.json();
         alert(`Error al crear el usuario: ${errorData.message || 'Intenta nuevamente.'}`);
@@ -78,6 +72,7 @@ export default function AdminNuevoUsuario() {
         <nav className="sidebar-nav">
           <Link to="/admin-home">📊 DASHBOARD</Link>
           <Link to="/admin-productos">🎮 INVENTARIO</Link>
+          <Link to="/admin-pedidos">📦 PEDIDOS</Link>
           <Link to="/admin-usuarios" className="active">👥 USUARIOS</Link>
           <Link to="/">🛍️ IR A TIENDA</Link>
           <a
@@ -174,7 +169,6 @@ export default function AdminNuevoUsuario() {
                   onChange={handleChange}
                 >
                   <option value="">-- Seleccione --</option>
-                  {/* Aquí deberías mapear tus regiones */}
                   <option value="RM">Metropolitana</option>
                 </select>
               </div>
@@ -187,7 +181,6 @@ export default function AdminNuevoUsuario() {
                   onChange={handleChange}
                 >
                   <option value="">-- Seleccione --</option>
-                  {/* Aquí deberías mapear tus comunas dependiendo de la región */}
                   <option value="Puente Alto">Puente Alto</option>
                 </select>
               </div>

@@ -1,52 +1,72 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
+
+const API_URL = 'http://localhost:8080/api';
 
 export default function AdminHome() {
   const navigate = useNavigate();
+  const { logoutUser } = useShop();
 
   const [stats, setStats] = useState({
     totalProducts: 0,
     lowStock: 0,
-    cartItems: 0
+    cartItems: 0,
+    totalPedidos: 0
   });
 
-  // 1. Nuevo estado para guardar y mostrar la lista del inventario
+  // Lista del inventario
   const [productos, setProductos] = useState([]);
 
   useEffect(() => {
-    let storedProducts = [];
-    let storedCart = [];
+    const cargarDashboard = async () => {
+      let storedProducts = [];
+      let storedCart = [];
 
-    try {
-      const prodData = localStorage.getItem('productos');
-      const cartData = localStorage.getItem('carrito');
+      try {
+        const prodData = localStorage.getItem('productos') || localStorage.getItem('gamer_products');
+        const cartData = localStorage.getItem('gamer_cart') || localStorage.getItem('carrito');
 
-      if (prodData) storedProducts = JSON.parse(prodData);
-      if (cartData) storedCart = JSON.parse(cartData);
-    } catch (error) {
-      console.error('Error al leer el localStorage:', error);
-    }
+        if (prodData) storedProducts = JSON.parse(prodData);
+        if (cartData) storedCart = JSON.parse(cartData);
+      } catch (error) {
+        console.error('Error al leer el localStorage:', error);
+      }
 
-    if (!Array.isArray(storedProducts)) storedProducts = [];
-    if (!Array.isArray(storedCart)) storedCart = [];
+      if (!Array.isArray(storedProducts)) storedProducts = [];
+      if (!Array.isArray(storedCart)) storedCart = [];
 
-    const total = storedProducts.length;
-    const low = storedProducts.filter(producto => producto.stock < 10).length;
-    const cartCount = storedCart.reduce((acc, item) => acc + (item.cantidad || 1), 0);
+      const total = storedProducts.length;
+      const low = storedProducts.filter(producto => producto.stock < 10).length;
+      const cartCount = storedCart.reduce((acc, item) => acc + (item.cantidad || 1), 0);
 
-    setStats({
-      totalProducts: total, 
-      lowStock: low,           
-      cartItems: cartCount 
-    });
+      let cantidadPedidos = 0;
+      try {
+        const respPedidos = await fetch(`${API_URL}/pedidos`);
+        if (respPedidos.ok) {
+          const dataPedidos = await respPedidos.json();
+          cantidadPedidos = Array.isArray(dataPedidos) ? dataPedidos.length : 0;
+        }
+      } catch (err) {
+        console.warn('No se pudo obtener el conteo de pedidos desde el backend:', err);
+      }
 
-    // 2. Guardamos los productos encontrados para mostrarlos en la tabla
-    setProductos(storedProducts);
+      setStats({
+        totalProducts: total,
+        lowStock: low,
+        cartItems: cartCount,
+        totalPedidos: cantidadPedidos
+      });
+
+      setProductos(storedProducts);
+    };
+
+    cargarDashboard();
   }, []);
 
   const cerrarSesionGamer = (e) => {
     e.preventDefault();
-    console.log('Cerrando sesión...');
+    if (logoutUser) logoutUser();
     navigate('/login');
   };
 
@@ -57,6 +77,7 @@ export default function AdminHome() {
         <nav className="sidebar-nav">
           <Link to="/admin-home" className="active">📊 DASHBOARD</Link>
           <Link to="/admin-productos">🎮 INVENTARIO</Link>
+          <Link to="/admin-pedidos">📦 PEDIDOS</Link>
           <Link to="/admin-usuarios">👥 USUARIOS</Link>
           <Link to="/">🛍️ IR A TIENDA</Link>
           <a
@@ -81,7 +102,7 @@ export default function AdminHome() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
             gap: '20px',
             marginTop: '30px',
           }}
@@ -129,6 +150,24 @@ export default function AdminHome() {
               {stats.cartItems}
             </p>
           </div>
+
+          <Link
+            to="/admin-pedidos"
+            className="form-card"
+            style={{ margin: 0, textAlign: 'center', textDecoration: 'none' }}
+          >
+            <h3 style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>PEDIDOS REGISTRADOS</h3>
+            <p
+              style={{
+                fontFamily: "'Orbitron', sans-serif",
+                fontSize: '2.5rem',
+                color: '#00ff88',
+                marginTop: '10px',
+              }}
+            >
+              {stats.totalPedidos}
+            </p>
+          </Link>
         </div>
 
         {/* SECCIÓN 2: TABLA DE INVENTARIO */}
@@ -155,7 +194,7 @@ export default function AdminHome() {
                     <tr key={index} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
                       <td style={{ padding: '15px' }}>{prod.id || index + 1}</td>
                       <td style={{ padding: '15px' }}>{prod.nombre || prod.titulo}</td>
-                      <td style={{ padding: '15px' }}>${prod.precio}</td>
+                      <td style={{ padding: '15px' }}>${Number(prod.precio || 0).toLocaleString('es-CL')}</td>
                       <td style={{ 
                         padding: '15px', 
                         color: prod.stock < 10 ? 'var(--primary-pink)' : '#fff',

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 
-// Vistas públicas
+// Vistas públicas y de cliente
 import Home from './pages/Home';
 import Productos from './pages/Productos';
 import DetalleProducto from './pages/DetalleProducto';
@@ -12,6 +12,8 @@ import Registro from './pages/Registro';
 import Nosotros from './pages/Nosotros';
 import Blogs from './pages/Blogs';
 import Contacto from './pages/Contacto';
+import MisPedidos from './pages/MisPedidos';
+import ListaDeseos from './pages/ListaDeseos';
 
 // Vistas de administración
 import AdminHome from './pages/AdminHome';
@@ -19,6 +21,7 @@ import AdminProductos from './pages/AdminProductos';
 import AdminUsuarios from './pages/AdminUsuarios';
 import AdminNuevoProducto from './pages/AdminNuevoProducto';
 import AdminNuevoUsuario from './pages/AdminNuevoUsuario';
+import AdminPedidos from './pages/AdminPedidos';
 
 export default function App() {
   
@@ -33,7 +36,7 @@ export default function App() {
         stock: 15,
         stockCritico: 5,
         categoria: 'PlayStation 5',
-        imagen: '/play5.jpg' //[cite: 3]
+        imagen: '/play5.jpg'
       },
       {
         id: 'JUE-001',
@@ -43,7 +46,7 @@ export default function App() {
         stock: 8,
         stockCritico: 10,
         categoria: 'PlayStation 5',
-        imagen: '/grandtheft.jpg' //[cite: 3]
+        imagen: '/grandtheft.jpg'
       },
       {
         id: 'JUE-002',
@@ -53,7 +56,7 @@ export default function App() {
         stock: 20,
         stockCritico: 5,
         categoria: 'Nintendo Switch',
-        imagen: '/mario.jpg' //[cite: 3]
+        imagen: '/mario.jpg'
       },
       {
         id: 'JUE-003',
@@ -63,7 +66,7 @@ export default function App() {
         stock: 4,
         stockCritico: 5,
         categoria: 'Nintendo Switch',
-        imagen: '/ac3nswchico.jpg' //[cite: 3]
+        imagen: '/ac3nswchico.jpg'
       },
       {
         id: 'CON-002',
@@ -73,7 +76,7 @@ export default function App() {
         stock: 12,
         stockCritico: 5,
         categoria: 'Nintendo Switch',
-        imagen: '/switch2.jpg' //[cite: 3]
+        imagen: '/switch2.jpg'
       }
     ];
 
@@ -87,7 +90,7 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Rutas Públicas */}
+      {/* Rutas Públicas y Cliente */}
       <Route path="/" element={<Home />} />
       <Route path="/productos" element={<Productos />} />
       <Route path="/producto/:id" element={<DetalleProducto />} />
@@ -98,6 +101,8 @@ export default function App() {
       <Route path="/nosotros" element={<Nosotros />} />
       <Route path="/blogs" element={<Blogs />} />
       <Route path="/contacto" element={<Contacto />} />
+      <Route path="/mis-pedidos" element={<MisPedidos />} />
+      <Route path="/lista-deseos" element={<ListaDeseos />} />
 
       {/* Rutas Admin */}
       <Route path="/admin-home" element={<AdminHome />} />
@@ -105,6 +110,7 @@ export default function App() {
       <Route path="/admin-usuarios" element={<AdminUsuarios />} />
       <Route path="/admin-nuevo-producto" element={<AdminNuevoProducto />} />
       <Route path="/admin-nuevo-usuario" element={<AdminNuevoUsuario />} />
+      <Route path="/admin-pedidos" element={<AdminPedidos />} />
     </Routes>
   );
 }
