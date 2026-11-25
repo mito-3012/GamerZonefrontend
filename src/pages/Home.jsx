@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
 
 export default function Home() {
+  const { currentUser, logoutUser, cartCount } = useShop();
   const [newsletterEmail, setNewsletterEmail] = useState('');
 
   const handleSubscribe = (e) => {
     e.preventDefault();
-    console.log('Suscrito al boletín con:', newsletterEmail);
+    alert(`Suscrito al boletín con: ${newsletterEmail}`);
+    setNewsletterEmail('');
   };
 
   return (
@@ -20,16 +23,37 @@ export default function Home() {
         <nav className="main-nav">
           <Link to="/" className="active">Home</Link>
           <Link to="/productos">Catálogo</Link>
+          <Link to="/lista-deseos">Deseos</Link>
+          <Link to="/mis-pedidos">Mis Pedidos</Link>
           <Link to="/nosotros">Nosotros</Link>
           <Link to="/blogs">Noticias</Link>
           <Link to="/contacto">Contacto</Link>
+          {currentUser?.rol === 'Admin' && (
+            <Link to="/admin-home" style={{ color: 'var(--primary-cyan)' }}>Admin</Link>
+          )}
         </nav>
 
         <div className="header-right">
-          <Link to="/login" className="btn-link">Iniciar sesión</Link> |{' '}
-          <Link to="/registro" className="btn-link">Registrarse</Link>
+          {currentUser ? (
+            <>
+              <span style={{ marginRight: '8px' }}>👤 {currentUser.nombre || currentUser.email}</span>
+              <button
+                type="button"
+                onClick={logoutUser}
+                className="btn-link"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-pink)' }}
+              >
+                Salir
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="btn-link">Iniciar sesión</Link> |{' '}
+              <Link to="/registro" className="btn-link">Registrarse</Link>
+            </>
+          )}
           <Link to="/carrito" className="cart-btn">
-            🛒 Cart (<span id="cart-count">0</span>)
+            🛒 Cart (<span id="cart-count">{cartCount}</span>)
           </Link>
         </div>
       </header>
@@ -44,7 +68,7 @@ export default function Home() {
             <Link to="/productos" className="btn btn-primary">Ver Catálogo</Link>
           </div>
           <div className="hero-image">
-            <img src="../blog1.jpg" alt="Banner Gamer" />
+            <img src="/blog1.jpg" alt="Banner Gamer" />
           </div>
         </section>
 
@@ -52,7 +76,7 @@ export default function Home() {
           <h3>Producto destacado</h3>
           <div className="product-card">
             <div className="img-box">
-              <img src="../ac3nswchico.jpg" alt="Assassins Creed III" />
+              <img src="/ac3nswchico.jpg" alt="Assassins Creed III" />
             </div>
             <h3 className="product-title">Nintendo Switch Assassins Creed III Remastered</h3>
             <div className="product-footer">
