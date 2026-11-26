@@ -1,12 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
 
 export default function Contacto() {
+  const { currentUser, logoutUser, cartCount } = useShop();
+
   const [formData, setFormData] = useState({
     nombre: '',
     correo: '',
     comentario: '',
   });
+  const [enviando, setEnviando] = useState(false);
+
+  const rolActual = (currentUser?.rol || '').toLowerCase();
+  const esStaff = rolActual === 'administrador' || rolActual === 'vendedor';
+
+  useEffect(() => {
+    if (currentUser) {
+      setFormData((prev) => ({
+        ...prev,
+        nombre: prev.nombre || currentUser.nombre || '',
+        correo: prev.correo || currentUser.email || '',
+      }));
+    }
+  }, [currentUser]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -18,20 +35,37 @@ export default function Contacto() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    if (!formData.nombre || !formData.correo || !formData.comentario) {
+
+    if (!formData.nombre.trim() || !formData.correo.trim() || !formData.comentario.trim()) {
       alert('Por favor, completa todos los campos antes de enviar tu mensaje.');
       return;
     }
 
-    console.log('Mensaje de contacto simulado y enviado:', formData);
-    alert('¡Mensaje enviado con éxito! Nos pondremos en contacto contigo a la brevedad.');
+    if (!formData.correo.includes('@')) {
+      alert('Por favor, ingresa un correo electrónico válido.');
+      return;
+    }
 
-    setFormData({
-      nombre: '',
-      correo: '',
-      comentario: '',
-    });
+    setEnviando(true);
+
+    try {
+      const historialContactos = JSON.parse(localStorage.getItem('gamer_contactos') || '[]');
+      historialContactos.push({
+        id: Date.now(),
+        ...formData,
+        fecha: new Date().toISOString(),
+      });
+      localStorage.setItem('gamer_contactos', JSON.stringify(historialContactos));
+
+      alert('¡Mensaje enviado con éxito! Nos pondremos en contacto contigo a la brevedad.');
+      setFormData({
+        nombre: currentUser?.nombre || '',
+        correo: currentUser?.email || '',
+        comentario: '',
+      });
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return (
@@ -45,14 +79,41 @@ export default function Contacto() {
         <nav className="main-nav">
           <Link to="/">Home</Link>
           <Link to="/productos">Catálogo</Link>
+          {currentUser && <Link to="/lista-deseos">Deseos</Link>}
+          {currentUser && <Link to="/mis-pedidos">Mis Pedidos</Link>}
           <Link to="/nosotros">Nosotros</Link>
           <Link to="/blogs">Noticias</Link>
           <Link to="/contacto" className="active">Contacto</Link>
+          {esStaff && (
+            <Link to="/admin-home" style={{ color: 'var(--primary-cyan)', fontWeight: 'bold' }}>
+              Panel Admin
+            </Link>
+          )}
         </nav>
 
         <div className="header-right">
+          {currentUser ? (
+            <>
+              <span style={{ marginRight: '8px' }}>
+                👤 {currentUser.nombre || currentUser.email}
+              </span>
+              <button
+                type="button"
+                onClick={logoutUser}
+                className="btn-link"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-pink)' }}
+              >
+                Salir
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="btn-link">Iniciar sesión</Link> |{' '}
+              <Link to="/registro" className="btn-link">Registrarse</Link>
+            </>
+          )}
           <Link to="/carrito" className="cart-btn">
-            🛒 Cart (<span id="cart-count">0</span>)
+            🛒 Cart (<span id="cart-count">{cartCount}</span>)
           </Link>
         </div>
       </header>
@@ -73,6 +134,7 @@ export default function Contacto() {
                 name="nombre"
                 className="form-control"
                 autoComplete="name"
+                placeholder="Tu nombre completo"
                 value={formData.nombre}
                 onChange={handleChange}
               />
@@ -86,6 +148,7 @@ export default function Contacto() {
                 name="correo"
                 className="form-control"
                 autoComplete="email"
+                placeholder="correo@ejemplo.com"
                 value={formData.correo}
                 onChange={handleChange}
               />
@@ -98,13 +161,18 @@ export default function Contacto() {
                 name="comentario"
                 className="form-control"
                 rows="4"
+                placeholder="Escribe aquí tu duda sobre productos, envíos o pedidos..."
                 value={formData.comentario}
                 onChange={handleChange}
               ></textarea>
             </div>
 
-            <button type="submit" className="btn btn-outline btn-block">
-              ENVIAR CONSULTA
+            <button
+              type="submit"
+              className="btn btn-outline btn-block"
+              disabled={enviando}
+            >
+              {enviando ? 'ENVIANDO...' : 'ENVIAR CONSULTA'}
             </button>
           </form>
         </div>
