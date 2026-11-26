@@ -3,11 +3,13 @@ import { useParams, Link } from 'react-router-dom';
 import { useShop } from '../context/ShopContext';
 
 export default function DetalleProducto() {
-  const { id } = useParams(); // Obtiene el id desde la URL (/producto/1)
-  const { productos, agregarAlCarritoConCantidad, cartCount, rutaImagenProducto } = useShop();
+  const { id } = useParams();
+  const { productos, agregarAlCarritoConCantidad, cartCount, rutaImagenProducto, currentUser, logoutUser } = useShop();
   const [cantidad, setCantidad] = useState(1);
 
-  // Buscar el producto por su ID
+  const rolActual = (currentUser?.rol || '').toLowerCase();
+  const esStaff = rolActual === 'administrador' || rolActual === 'vendedor';
+
   const prod = productos.find(p => p.id === Number(id)) || productos[0];
 
   const handleAddToCart = () => {
@@ -27,12 +29,36 @@ export default function DetalleProducto() {
         <nav className="main-nav">
           <Link to="/">Home</Link>
           <Link to="/productos" className="active">Catálogo</Link>
+          {currentUser && <Link to="/lista-deseos">Deseos</Link>}
+          {currentUser && <Link to="/mis-pedidos">Mis Pedidos</Link>}
           <Link to="/nosotros">Nosotros</Link>
           <Link to="/blogs">Noticias</Link>
           <Link to="/contacto">Contacto</Link>
+          {esStaff && (
+            <Link to="/admin-home" style={{ color: 'var(--primary-cyan)', fontWeight: 'bold' }}>
+              Panel Admin
+            </Link>
+          )}
         </nav>
 
         <div className="header-right">
+          {currentUser ? (
+            <>
+              <span style={{ marginRight: '8px' }}>
+                👤 {currentUser.nombre || currentUser.email}
+              </span>
+              <button
+                type="button"
+                onClick={logoutUser}
+                className="btn-link"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-pink)' }}
+              >
+                Salir
+              </button>
+            </>
+          ) : (
+            <Link to="/login" className="btn-link">Iniciar sesión</Link>
+          )}
           <Link to="/carrito" className="cart-btn">
             🛒 Cart (<span>{cartCount}</span>)
           </Link>
@@ -56,9 +82,9 @@ export default function DetalleProducto() {
 
             <div className="product-info-box">
               <h1>{prod.nombre}</h1>
-              <div className="price">${prod.precio.toLocaleString("es-CL")}</div>
+              <div className="price">${Number(prod.precio).toLocaleString("es-CL")}</div>
               <p>
-                Sumérgete en una aventura épica con gráficos de última generación, historia inmersiva y un sistema de combate totalmente optimizado.
+                {prod.descripcion || 'Sumérgete en una aventura épica con gráficos de última generación, historia inmersiva y un sistema de combate totalmente optimizado.'}
               </p>
 
               <p className="stock-info" style={{ color: prod.stock > 0 ? '#2ed573' : '#ff4757', fontWeight: 'bold', marginBottom: '15px' }}>

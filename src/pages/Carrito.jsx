@@ -9,15 +9,19 @@ export default function Carrito() {
     eliminarDelCarrito,
     vaciarCarrito,
     aplicarCuponGamer,
-    procesarCompraGamer,
     totalCarrito,
     subtotalCarrito,
     descuentoAplicado,
     rutaImagenProducto,
-    cartCount
+    cartCount,
+    currentUser,
+    logoutUser
   } = useShop();
 
   const [cuponInput, setCuponInput] = useState('');
+
+  const rolActual = (currentUser?.rol || '').toLowerCase();
+  const esStaff = rolActual === 'administrador' || rolActual === 'vendedor';
 
   const handleAplicarCupon = () => {
     if (!cuponInput.trim()) return;
@@ -27,7 +31,6 @@ export default function Carrito() {
 
   return (
     <div>
-      {/* HEADER / NAVEGACIÓN */}
       <header className="main-header">
         <div className="logo">
           <span className="logo-icon">🎮</span>
@@ -37,19 +40,42 @@ export default function Carrito() {
         <nav className="main-nav">
           <Link to="/">Home</Link>
           <Link to="/productos">Catálogo</Link>
+          {currentUser && <Link to="/lista-deseos">Deseos</Link>}
+          {currentUser && <Link to="/mis-pedidos">Mis Pedidos</Link>}
           <Link to="/nosotros">Nosotros</Link>
           <Link to="/blogs">Noticias</Link>
           <Link to="/contacto">Contacto</Link>
+          {esStaff && (
+            <Link to="/admin-home" style={{ color: 'var(--primary-cyan)', fontWeight: 'bold' }}>
+              Panel Admin
+            </Link>
+          )}
         </nav>
 
         <div className="header-right">
+          {currentUser ? (
+            <>
+              <span style={{ marginRight: '8px' }}>
+                👤 {currentUser.nombre || currentUser.email}
+              </span>
+              <button
+                type="button"
+                onClick={logoutUser}
+                className="btn-link"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-pink)' }}
+              >
+                Salir
+              </button>
+            </>
+          ) : (
+            <Link to="/login" className="btn-link">Iniciar sesión</Link>
+          )}
           <Link to="/carrito" className="cart-btn active">
             🛒 Cart (<span>{cartCount}</span>)
           </Link>
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL */}
       <main className="container" style={{ marginTop: '30px', marginBottom: '50px' }}>
         <h1 className="page-title">MI CARRITO GAMER</h1>
 
@@ -64,7 +90,6 @@ export default function Carrito() {
           </div>
         ) : (
           <div className="cart-layout">
-            {/* LISTADO DINÁMICO DE PRODUCTOS */}
             <div className="cart-items" id="cart-items-list">
               {carrito.map((item) => {
                 const itemSubtotal = item.precio * item.cantidad;
@@ -86,7 +111,6 @@ export default function Carrito() {
                       </div>
                     </div>
 
-                    {/* Controles de Cantidad */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <button
                         type="button"
@@ -109,14 +133,12 @@ export default function Carrito() {
                       </button>
                     </div>
 
-                    {/* Subtotal del Producto */}
                     <div>
                       <strong style={{ color: '#2ed573' }}>
                         ${itemSubtotal.toLocaleString('es-CL')}
                       </strong>
                     </div>
 
-                    {/* Botón Eliminar */}
                     <button
                       type="button"
                       className="btn btn-action btn-delete"
@@ -144,7 +166,6 @@ export default function Carrito() {
               </div>
             </div>
 
-            {/* RESUMEN DE PAGO */}
             <div className="cart-summary">
               <div style={{ marginBottom: '15px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -164,7 +185,6 @@ export default function Carrito() {
                 </h2>
               </div>
 
-              {/* Formulario de Cupón */}
               <div className="coupon-box">
                 <input
                   type="text"
@@ -182,7 +202,6 @@ export default function Carrito() {
                 </button>
               </div>
 
-              {/* Ir al módulo de pago conectado al backend */}
               <Link to="/pago" className="btn btn-success btn-block btn-lg" style={{ display: 'block', textAlign: 'center', width: '100%', marginTop: '15px' }}>
                 CONTINUAR AL PAGO
               </Link>

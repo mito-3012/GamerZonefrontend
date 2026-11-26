@@ -2,16 +2,24 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 
-const API_URL = "http://localhost:8080/api";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8080").replace(/\/$/, "") + "/api";
 
 export default function ListaDeseos() {
-  const { currentUser, productos, agregarAlCarritoGamer, rutaImagenProducto } = useShop();
+  const { currentUser, token, productos, agregarAlCarritoGamer, rutaImagenProducto } = useShop();
   const [favoritos, setFavoritos] = useState([]);
   const [cargando, setCargando] = useState(true);
 
   const storageKey = currentUser
     ? `gamer_wishlist_${currentUser.idUsuario ?? currentUser.id}`
     : "gamer_wishlist_guest";
+
+  const getAuthHeaders = () => {
+    const jwtToken = token || localStorage.getItem("token");
+    return {
+      "Content-Type": "application/json",
+      ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {})
+    };
+  };
 
   useEffect(() => {
     const cargarDeseos = async () => {
@@ -25,7 +33,9 @@ export default function ListaDeseos() {
       }
 
       try {
-        const resp = await fetch(`${API_URL}/lista-deseos`);
+        const resp = await fetch(`${API_URL}/lista-deseos`, {
+          headers: getAuthHeaders()
+        });
         if (resp.ok) {
           const data = await resp.json();
           const userId = Number(currentUser.idUsuario ?? currentUser.id);
@@ -54,7 +64,7 @@ export default function ListaDeseos() {
     };
 
     cargarDeseos();
-  }, [currentUser, storageKey]);
+  }, [currentUser, token, storageKey]);
 
   const agregarFavorito = async (prod) => {
     const prodId = Number(prod.idProducto ?? prod.id);
@@ -67,7 +77,7 @@ export default function ListaDeseos() {
         const userId = Number(currentUser.idUsuario ?? currentUser.id);
         const resp = await fetch(`${API_URL}/lista-deseos`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             usuario: { id: userId },
             producto: { idProducto: prodId, id: prodId }
@@ -93,7 +103,8 @@ export default function ListaDeseos() {
     if (currentUser && item.idListaDeseos) {
       try {
         await fetch(`${API_URL}/lista-deseos/${item.idListaDeseos}`, {
-          method: "DELETE"
+          method: "DELETE",
+          headers: getAuthHeaders()
         });
       } catch (err) {
         console.error("Error eliminando deseo en BD:", err);
@@ -118,9 +129,14 @@ export default function ListaDeseos() {
             Guarda tus próximos juegos y consolas favoritas para comprarlos cuando quieras.
           </p>
         </div>
-        <Link to="/carrito" className="btn btn-outline-success">
-          Ir al Carrito
-        </Link>
+        <div className="d-flex gap-2">
+          <Link to="/productos" className="btn btn-outline-light">
+            Catálogo
+          </Link>
+          <Link to="/carrito" className="btn btn-outline-success">
+            Ir al Carrito
+          </Link>
+        </div>
       </div>
 
       {cargando ? (
@@ -177,7 +193,6 @@ export default function ListaDeseos() {
         </div>
       )}
 
-      {/* Agregar rápido desde catálogo */}
       {sugerencias.length > 0 && (
         <div>
           <h4 className="fw-bold mb-3">Agregar productos a tu lista</h4>

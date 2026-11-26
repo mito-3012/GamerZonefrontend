@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import { useShop } from '../context/ShopContext';
 
 export default function Productos() {
-  const { productos, agregarAlCarritoGamer, rutaImagenProducto, cartCount } = useShop();
+  const { productos, agregarAlCarritoGamer, rutaImagenProducto, cartCount, currentUser, logoutUser } = useShop();
   const [newsletterEmail, setNewsletterEmail] = useState('');
+
+  const rolActual = (currentUser?.rol || '').toLowerCase();
+  const esStaff = rolActual === 'administrador' || rolActual === 'vendedor';
 
   const handleNewsletterSubmit = (e) => {
     e.preventDefault();
@@ -14,7 +17,6 @@ export default function Productos() {
 
   return (
     <div>
-      {/* HEADER / NAVEGACIÓN */}
       <header className="main-header">
         <div className="logo">
           <span className="logo-icon">🎮</span>
@@ -23,15 +25,38 @@ export default function Productos() {
         <nav className="main-nav">
           <Link to="/">Home</Link>
           <Link to="/productos" className="active">Catálogo</Link>
+          {currentUser && <Link to="/lista-deseos">Deseos</Link>}
+          {currentUser && <Link to="/mis-pedidos">Mis Pedidos</Link>}
           <Link to="/nosotros">Nosotros</Link>
           <Link to="/blogs">Noticias</Link>
           <Link to="/contacto">Contacto</Link>
+          {esStaff && (
+            <Link to="/admin-home" style={{ color: 'var(--primary-cyan)', fontWeight: 'bold' }}>
+              Panel Admin
+            </Link>
+          )}
         </nav>
         <div className="header-right">
-          <div className="auth-links">
-            <Link to="/login">Iniciar sesión</Link> |{' '}
-            <Link to="/registro">Registrar usuario</Link>
-          </div>
+          {currentUser ? (
+            <>
+              <span style={{ marginRight: '8px' }}>
+                👤 {currentUser.nombre || currentUser.email}
+              </span>
+              <button
+                type="button"
+                onClick={logoutUser}
+                className="btn-link"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-pink)' }}
+              >
+                Salir
+              </button>
+            </>
+          ) : (
+            <div className="auth-links">
+              <Link to="/login">Iniciar sesión</Link> |{' '}
+              <Link to="/registro">Registrar usuario</Link>
+            </div>
+          )}
           <Link to="/carrito" className="cart-btn">
             🛒 Cart (<span>{cartCount}</span>)
           </Link>
@@ -39,7 +64,6 @@ export default function Productos() {
       </header>
 
       <main className="container">
-        {/* HERO BANNER */}
         <section className="hero-banner">
           <div className="hero-text">
             <h2>TIENDA ONLINE</h2>
@@ -60,10 +84,8 @@ export default function Productos() {
           </div>
         </section>
 
-        {/* TÍTULO DE SECCIÓN */}
         <h1 className="page-title">CATÁLOGO DE VIDEOJUEGOS Y CONSOLAS</h1>
 
-        {/* GRILLA DE PRODUCTOS DINÁMICA */}
         <div className="product-grid" id="all-products-container">
           {productos.map((p) => (
             <div key={p.id} className="product-card">
@@ -100,7 +122,6 @@ export default function Productos() {
         </div>
       </main>
 
-      {/* FOOTER */}
       <footer className="main-footer">
         <div className="footer-cols">
           <div className="footer-left">
