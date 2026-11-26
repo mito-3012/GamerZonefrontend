@@ -1,468 +1,430 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useShop } from '../context/ShopContext';
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useShop } from "../context/ShopContext";
 
-const API_URL = (
-  import.meta.env.VITE_API_URL || 'http://localhost:8080'
-).replace(/\/$/, '');
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8080").replace(/\/$/, "") + "/api";
 
-const formatoCLP = (valor) =>
-  Number(valor || 0).toLocaleString('es-CL');
+const METODOS = [
+  { id: "TARJETA_CREDITO", label: "Tarjeta de crédito", requiereTarjeta: true },
+  { id: "TARJETA_DEBITO", label: "Tarjeta de débito", requiereTarjeta: true },
+  { id: "TRANSFERENCIA", label: "Transferencia bancaria", requiereTarjeta: false },
+  { id: "EFECTIVO", label: "Efectivo", requiereTarjeta: false },
+];
 
-export default function Pago({ usuario: usuarioProp, direccionDespacho: direccionProp }) {
-  const shop = useShop();
-  const { carrito = [], totalCarrito = 0, vaciarCarrito, token } = shop;
+export default function Pago() {
+  const { carrito, totalCarrito, vaciarCarrito, currentUser, token } = useShop();
+  const navigate = useNavigate();
 
-  const usuarioStorage = (() => {
-    try {
-      return JSON.parse(localStorage.getItem('usuario') || 'null');
-    } catch {
-      return null;
-    }
-  })();
+  const [metodo, setMetodo] = useState("TARJETA_DEBITO");
+  const [numero, setNumero] = useState("");
+  const [titular, setTitular] = useState("");
+  const [vencimiento, setVencimiento] = useState("");
+  const [cvv, setCvv] = useState("");
+  const [direccion, setDireccion] = useState("");
+  const [referencia, setReferencia] = useState("");
 
-  const usuarioActual = usuarioProp || shop.usuario || usuarioStorage;
-  const idUsuarioFinal = usuarioActual?.idUsuario ?? usuarioActual?.id ?? 1;
-
-  const [direccion, setDireccion] = useState(
-    direccionProp || usuarioActual?.direccion || ''
-  );
-  const [metodoPago, setMetodoPago] = useState('TARJETA_DEBITO');
-  const [procesando, setProcesando] = useState(false);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(null);
   const [resultado, setResultado] = useState(null);
-  const [error, setError] = useState('');
 
-  const [datosTarjeta, setDatosTarjeta] = useState({
-    numero: '',
-    titular: usuarioActual ? `${usuarioActual.nombre || ''} ${usuarioActual.apellido || ''}`.trim() : '',
-    expiracion: '',
-    cvv: ''
-  });
-
-  const esTarjeta = metodoPago === 'TARJETA_CREDITO' || metodoPago === 'TARJETA_DEBITO';
+  const metodoSeleccionado = METODOS.find((m) => m.id === metodo);
   const monto = Number(totalCarrito || 0);
 
+  useEffect(() => {
+    if (currentUser && !titular) {
+      setTitular((currentUser.nombre || "").toUpperCase());
+    }
+  }, [currentUser]);
+
   const getAuthHeaders = () => {
-    const jwtToken = token || localStorage.getItem('token');
+    const jwtToken = token || localStorage.getItem("token");
     return {
-      'Content-Type': 'application/json',
-      ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {})
+      "Content-Type": "application/json",
+      ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {}),
     };
   };
 
-  const handleTarjetaChange = (e) => {
-    const { name, value } = e.target;
-    setDatosTarjeta((prev) => ({ ...prev, [name]: value }));
+  const formatearTarjeta = (valor) => {
+    const digitos = valor.replace(/\D/g, "").slice(0, 16);
+    return digitos.replace(/(.{4})/g, "$1 ").trim();
   };
 
-  // 1. Crea el pedido en el backend autenticado con JWT y recibe su ID generado
-  const crearPedido = async () => {
-    const response = await fetch(
-      `${API_URL}/api/pedidos/crear-desde-carrito`,
-      {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          idUsuario: idUsuarioFinal,
-          direccionDespacho: direccion.trim(),
-          items: carrito.map((item) => ({
-            idProducto: item.idProducto ?? item.id,
-            cantidad: Number(item.cantidad)
-          }))
-        })
+  const formatearVencimiento = (valor) => {
+    const digitos = valor.replace(/\D/g, "").slice(0, 4);
+    if (digitos.length <= 2) return digitos;
+    return `${digitos.slice(0, 2)}/${digitos.slice(2)}`;
+  };
+
+  const formatoCLP = (n) => new Intl.NumberFormat("es-CL").format(Number(n || 0));
+
+  const validar = () => {
+    const jwtToken = token || localStorage.getItem("token");
+    if (!currentUser || !jwtToken) {
+      return "Debes iniciar sesión antes de realizar una compra.";
+    }
+    if (!carrito || carrito.length === 0) {
+      return "Tu carrito está vacío. Agrega productos antes de pagar.";
+    }
+    if (monto <= 0) {
+      return "El monto a pagar debe ser mayor a $0.";
+    }
+    if (!direccion.trim()) {
+      return "Ingresa una dirección de entrega para tu pedido.";
+    }
+
+    if (metodoSeleccionado?.requiereTarjeta) {
+      const digitos = numero.replace(/\s/g, "");
+      if (digitos.length !== 16) {
+        return "El número de tarjeta debe tener 16 dígitos.";
       }
-    );
-
-    if (response.status === 401 || response.status === 403) {
-      throw new Error('Tu sesión expiró o no tienes permisos. Inicia sesión nuevamente.');
+      if (!titular.trim()) {
+        return "Ingresa el nombre del titular de la tarjeta.";
+      }
+      if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(vencimiento)) {
+        return "Ingresa una fecha de vencimiento válida (MM/AA, ej: 10/29).";
+      }
+      if (cvv.length < 3) {
+        return "El CVV debe tener 3 o 4 dígitos.";
+      }
     }
-
-    const pedido = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(
-        pedido.message ||
-        pedido.detail ||
-        pedido.error ||
-        'No se pudo crear el pedido.'
-      );
-    }
-
-    const idPedidoGenerado = pedido.idPedido ?? pedido.id;
-    const totalGenerado = pedido.total ?? monto;
-
-    if (!idPedidoGenerado) {
-      throw new Error('El backend no devolvió el ID del pedido.');
-    }
-
-    return {
-      ...pedido,
-      idPedido: idPedidoGenerado,
-      total: Number(totalGenerado)
-    };
+    return null;
   };
 
-  // 2. Registra el pago utilizando el pedido generado y el token JWT
-  const registrarPago = async (pedido) => {
-    const response = await fetch(`${API_URL}/api/pagos`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        idPedido: pedido.idPedido,
-        metodoPago,
-        monto: Number(pedido.total),
-        numeroTarjeta: esTarjeta ? datosTarjeta.numero.replace(/\s+/g, '') : null,
-        titularTarjeta: esTarjeta ? datosTarjeta.titular : null
-      })
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      throw new Error('No autorizado para procesar el pago. Inicia sesión nuevamente.');
-    }
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(
-        data.message ||
-        data.detail ||
-        data.error ||
-        'No fue posible registrar el pago.'
-      );
-    }
-
-    return data;
-  };
-
-  const enviarPago = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    setError('');
+    setError(null);
     setResultado(null);
 
-    if (!carrito.length || monto <= 0) {
-      setError('Tu carrito está vacío. Agrega productos antes de continuar.');
+    const errorValidacion = validar();
+    if (errorValidacion) {
+      setError(errorValidacion);
       return;
     }
 
-    if (!direccion.trim()) {
-      setError('Por favor, ingresa una dirección de despacho.');
-      return;
-    }
-
-    if (esTarjeta) {
-      const numLimpio = datosTarjeta.numero.replace(/\s+/g, '');
-      if (numLimpio.length < 13 || !datosTarjeta.titular.trim() || !datosTarjeta.expiracion.trim() || datosTarjeta.cvv.length < 3) {
-        setError('Completa correctamente todos los datos de la tarjeta simulada.');
-        return;
-      }
-    }
-
-    setProcesando(true);
-
+    setCargando(true);
     try {
-      const pedido = await crearPedido();
-      const pago = await registrarPago(pedido);
+      const idUsuario = Number(currentUser.idUsuario ?? currentUser.id);
+      const headers = getAuthHeaders();
 
-      if (typeof vaciarCarrito === 'function') {
+      // 1. Crear el pedido en el backend con token JWT
+      const pedidoResp = await fetch(`${API_URL}/pedidos/crear-desde-carrito`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          idUsuario,
+          direccionEntrega: direccion.trim(),
+          items: carrito.map((item) => ({
+            idProducto: Number(item.idProducto ?? item.id),
+            cantidad: Number(item.cantidad),
+          })),
+        }),
+      });
+
+      if (!pedidoResp.ok) {
+        const errData = await pedidoResp.json().catch(() => ({}));
+        throw new Error(errData.error || errData.message || `Error HTTP ${pedidoResp.status} al crear el pedido.`);
+      }
+
+      const pedidoCreado = await pedidoResp.json();
+      const idPedidoReal = pedidoCreado.idPedido ?? pedidoCreado.id;
+
+      // 2. Registrar y simular el pago asociado al pedido
+      const digitos = numero.replace(/\s/g, "");
+      const bodyPago = {
+        idPedido: Number(idPedidoReal),
+        metodo,
+        monto,
+        referencia: metodoSeleccionado?.requiereTarjeta
+          ? `TARJETA ****${digitos.slice(-4)}`
+          : referencia.trim() || "PAGO ONLINE",
+      };
+
+      const pagoResp = await fetch(`${API_URL}/pagos/simular`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(bodyPago),
+      });
+
+      if (!pagoResp.ok) {
+        const errPago = await pagoResp.json().catch(() => ({}));
+        throw new Error(errPago.error || errPago.message || `Error HTTP ${pagoResp.status} al procesar el pago.`);
+      }
+
+      const dataPago = await pagoResp.json();
+      setResultado({
+        ...dataPago,
+        idPedido: idPedidoReal,
+      });
+
+      if (dataPago.estado === "APROBADO" || pagoResp.status === 201) {
         vaciarCarrito();
       }
-
-      setResultado({
-        ...pago,
-        idPedido: pedido.idPedido,
-        monto: Number(pedido.total)
-      });
     } catch (err) {
-      setError(err.message || 'No se pudo conectar con el servidor.');
+      console.error("Error en checkout:", err);
+      setError(err.message || "No se pudo realizar la compra.");
     } finally {
-      setProcesando(false);
+      setCargando(false);
     }
   };
 
   return (
-    <main
-      className="container"
-      style={{
-        maxWidth: 1120,
-        margin: '32px auto',
-        padding: 24
-      }}
-    >
-      <h1 className="page-title">Pago</h1>
+    <div style={{ minHeight: "100vh", background: "#05060a", color: "#fff", padding: "32px 16px" }}>
+      <div style={{ maxWidth: 960, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0 }}>Pago</h1>
+          <Link to="/productos" style={{ color: "#19e6ff", textDecoration: "none", fontSize: 14 }}>
+            ← Volver a la tienda
+          </Link>
+        </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)',
-          gap: 24,
-          alignItems: 'start'
-        }}
-      >
-        <section className="cart-summary" style={{ padding: 24 }}>
-          {resultado ? (
-            <div role="status">
-              <h2 style={{ color: '#198754' }}>
-                Pago {resultado.estado || 'APROBADO'}
-              </h2>
-
-              <p>
-                Pedido: <strong>#{resultado.idPedido}</strong>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 32 }}>
+          <form onSubmit={handleSubmit}>
+            <section style={{ marginBottom: 24 }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Método de pago</h2>
+              <p style={{ fontSize: 12, color: "#9aa0ac", marginBottom: 14 }}>
+                Tu número de pedido se generará automáticamente al continuar.
               </p>
 
-              <p>
-                Monto:{' '}
-                <strong>
-                  ${formatoCLP(resultado.monto)} CLP
-                </strong>
-              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {METODOS.map((m) => {
+                  const activo = metodo === m.id;
+                  return (
+                    <label
+                      key={m.id}
+                      onClick={() => {
+                        setMetodo(m.id);
+                        setError(null);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "14px 16px",
+                        borderRadius: 10,
+                        border: activo ? "1.5px solid #19e6ff" : "1px solid #222634",
+                        background: activo ? "#0b1a22" : "#0b0d14",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input type="radio" name="metodo" checked={activo} onChange={() => setMetodo(m.id)} style={{ accentColor: "#19e6ff" }} />
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>{m.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
 
-              <p>Método: {resultado.metodoPago}</p>
+            {metodoSeleccionado?.requiereTarjeta ? (
+              <div style={{ border: "1px solid #19e6ff", borderRadius: 14, padding: 20, marginBottom: 24, background: "#070b12" }}>
+                <div style={{ fontSize: 13, color: "#19e6ff", fontWeight: 700, marginBottom: 16 }}>
+                  Simulador de tarjeta
+                </div>
 
-              {resultado.referenciaTransaccion && (
-                <p>
-                  Referencia: <strong>{resultado.referenciaTransaccion}</strong>
-                </p>
-              )}
+                <div
+                  style={{
+                    background: "linear-gradient(135deg, #0b1623 0%, #102a38 100%)",
+                    border: "1px solid #1e3f52",
+                    borderRadius: 12,
+                    padding: 18,
+                    marginBottom: 18,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9aa0ac", marginBottom: 18 }}>
+                    <span>{metodo === "TARJETA_CREDITO" ? "CRÉDITO" : "DÉBITO"}</span>
+                    <span style={{ color: "#19e6ff", fontWeight: 700 }}>GAMERZONE PAY</span>
+                  </div>
+                  <div style={{ fontSize: 18, letterSpacing: 3, fontFamily: "monospace", marginBottom: 18 }}>
+                    {numero || "•••• •••• •••• ••••"}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#c9d1d9" }}>
+                    <span>{(titular || "NOMBRE DEL TITULAR").toUpperCase()}</span>
+                    <span>{vencimiento || "MM/AA"}</span>
+                  </div>
+                </div>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                <Link className="btn btn-primary" to="/mis-pedidos">
-                  Ver mis pedidos
-                </Link>
-                <Link className="btn btn-outline" to="/productos">
-                  Volver a la tienda
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>Número de tarjeta</label>
+                  <input
+                    type="text"
+                    placeholder="4532 1234 5678 9010"
+                    value={numero}
+                    onChange={(e) => setNumero(formatearTarjeta(e.target.value))}
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>Nombre del titular</label>
+                  <input
+                    type="text"
+                    placeholder="CAMILA GONZÁLEZ"
+                    value={titular}
+                    onChange={(e) => setTitular(e.target.value.toUpperCase())}
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={labelStyle}>Vencimiento (MM/AA)</label>
+                    <input
+                      type="text"
+                      placeholder="10/29"
+                      value={vencimiento}
+                      onChange={(e) => setVencimiento(formatearVencimiento(e.target.value))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>CVV</label>
+                    <input
+                      type="password"
+                      placeholder="123"
+                      maxLength={4}
+                      value={cvv}
+                      onChange={(e) => setCvv(e.target.value.replace(/\D/g, ""))}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ border: "1px solid #222634", borderRadius: 12, padding: 16, marginBottom: 24, background: "#0b0d14" }}>
+                <label style={labelStyle}>Referencia / N° de comprobante (opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ej: TRF-998811"
+                  value={referencia}
+                  onChange={(e) => setReferencia(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Dirección de entrega</label>
+              <input
+                type="text"
+                placeholder="Ej: Av. Vicuña Mackenna 4917, San Joaquín"
+                value={direccion}
+                onChange={(e) => setDireccion(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={labelStyle}>Monto a pagar (CLP)</label>
+              <input
+                type="text"
+                readOnly
+                value={`$${formatoCLP(monto)} CLP`}
+                style={{ ...inputStyle, color: "#19e6ff", fontWeight: 700, cursor: "not-allowed" }}
+              />
+              <small style={{ color: "#19e6ff", fontSize: 11 }}>
+                El monto se calcula automáticamente con el total actual del carrito.
+              </small>
+            </div>
+
+            {error && (
+              <div style={{ color: "#ff5c7a", fontSize: 13, marginBottom: 12, fontWeight: 600 }}>
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={cargando}
+              style={{
+                width: "100%",
+                padding: "14px",
+                borderRadius: 10,
+                border: "none",
+                background: "#ffffff",
+                color: "#05060a",
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: cargando ? "wait" : "pointer",
+                opacity: cargando ? 0.7 : 1,
+              }}
+            >
+              {cargando ? "Procesando compra y pago..." : `Pagar $${formatoCLP(monto)} CLP`}
+            </button>
+          </form>
+
+          <div>
+            <div style={{ background: "#0b0d14", border: "1px solid #222634", borderRadius: 12, padding: 20 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, marginTop: 0 }}>Resumen de la compra</h3>
+
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#9aa0ac", marginBottom: 10 }}>
+                <span>Productos ({carrito.reduce((a, i) => a + i.cantidad, 0)})</span>
+                <span>${formatoCLP(monto)}</span>
+              </div>
+
+              <hr style={{ borderColor: "#222634", margin: "12px 0" }} />
+
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 14 }}>
+                <span>Total</span>
+                <span>${formatoCLP(monto)} CLP</span>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <Link to="/carrito" style={{ color: "#9aa0ac", fontSize: 12, textDecoration: "none" }}>
+                  Volver al carrito
                 </Link>
               </div>
             </div>
-          ) : (
-            <form
-              onSubmit={enviarPago}
-              style={{ display: 'grid', gap: 18 }}
-            >
-              <h2 style={{ margin: 0 }}>
-                Datos de envío y método de pago
-              </h2>
 
-              <label style={{ display: 'grid', gap: 6 }}>
-                <strong>Dirección de despacho</strong>
-                <input
-                  className="form-control"
-                  type="text"
-                  placeholder="Ej: Av. Concha y Toro 1340, Puente Alto"
-                  value={direccion}
-                  onChange={(e) => setDireccion(e.target.value)}
-                  required
-                />
-              </label>
-
-              <div style={{ display: 'grid', gap: 10 }}>
-                {[
-                  ['TARJETA_DEBITO', 'Tarjeta de débito (Simulador)'],
-                  ['TARJETA_CREDITO', 'Tarjeta de crédito (Simulador)'],
-                  ['TRANSFERENCIA', 'Transferencia bancaria'],
-                  ['EFECTIVO', 'Efectivo contra entrega']
-                ].map(([value, label]) => (
-                  <label
-                    key={value}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      border:
-                        metodoPago === value
-                          ? '2px solid #0d6efd'
-                          : '1px solid #dee2e6',
-                      borderRadius: 10,
-                      padding: 14,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="metodoPago"
-                      value={value}
-                      checked={metodoPago === value}
-                      onChange={(e) => setMetodoPago(e.target.value)}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-
-              {esTarjeta && (
-                <div
-                  style={{
-                    border: '1px solid #ced4da',
-                    borderRadius: 12,
-                    padding: 20,
-                    backgroundColor: '#f8f9fa',
-                    display: 'grid',
-                    gap: 14
-                  }}
-                >
-                  <div
-                    style={{
-                      background: 'linear-gradient(135deg, #1a1f36 0%, #0d6efd 100%)',
-                      color: '#fff',
-                      borderRadius: 12,
-                      padding: 20,
-                      display: 'grid',
-                      gap: 14,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, opacity: 0.9 }}>
-                      <span>GAMERZONE PAY</span>
-                      <span>{metodoPago === 'TARJETA_CREDITO' ? 'CRÉDITO' : 'DÉBITO'}</span>
-                    </div>
-                    <div style={{ fontSize: 20, letterSpacing: 2, fontFamily: 'monospace' }}>
-                      {datosTarjeta.numero || '4532 •••• •••• 9012'}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-                      <span>{(datosTarjeta.titular || 'NOMBRE DEL TITULAR').toUpperCase()}</span>
-                      <span>{datosTarjeta.expiracion || 'MM/AA'}</span>
-                    </div>
-                  </div>
-
-                  <label style={{ display: 'grid', gap: 4 }}>
-                    <small>Número de tarjeta</small>
-                    <input
-                      className="form-control"
-                      type="text"
-                      name="numero"
-                      maxLength="19"
-                      placeholder="4532 1234 5678 9012"
-                      value={datosTarjeta.numero}
-                      onChange={handleTarjetaChange}
-                      required
-                    />
-                  </label>
-
-                  <label style={{ display: 'grid', gap: 4 }}>
-                    <small>Nombre del titular</small>
-                    <input
-                      className="form-control"
-                      type="text"
-                      name="titular"
-                      placeholder="Como aparece en la tarjeta"
-                      value={datosTarjeta.titular}
-                      onChange={handleTarjetaChange}
-                      required
-                    />
-                  </label>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      <small>Vencimiento (MM/AA)</small>
-                      <input
-                        className="form-control"
-                        type="text"
-                        name="expiracion"
-                        maxLength="5"
-                        placeholder="08/29"
-                        value={datosTarjeta.expiracion}
-                        onChange={handleTarjetaChange}
-                        required
-                      />
-                    </label>
-
-                    <label style={{ display: 'grid', gap: 4 }}>
-                      <small>Código CVV</small>
-                      <input
-                        className="form-control"
-                        type="password"
-                        name="cvv"
-                        maxLength="4"
-                        placeholder="123"
-                        value={datosTarjeta.cvv}
-                        onChange={handleTarjetaChange}
-                        required
-                      />
-                    </label>
+            {resultado && (
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: 16,
+                  borderRadius: 12,
+                  border: resultado.estado === "APROBADO" ? "1px solid #22c55e" : "1px solid #ef4444",
+                  background: resultado.estado === "APROBADO" ? "#071f12" : "#220a0d",
+                }}
+              >
+                <div style={{ fontWeight: 700, color: resultado.estado === "APROBADO" ? "#22c55e" : "#ef4444", marginBottom: 6 }}>
+                  Pago {resultado.estado || "APROBADO"}
+                </div>
+                <div style={{ fontSize: 12, color: "#c9d1d9", lineHeight: 1.6 }}>
+                  <div>Pedido N°: <strong>#{resultado.idPedido}</strong></div>
+                  <div>ID Pago: <strong>#{resultado.idPago}</strong></div>
+                  <div>Método: <strong>{resultado.metodo}</strong></div>
+                  <div>Monto: <strong>${formatoCLP(resultado.monto)} CLP</strong></div>
+                  {resultado.codigoAutorizacion && (
+                    <div>Autorización: <strong>{resultado.codigoAutorizacion}</strong></div>
+                  )}
+                  <div style={{ marginTop: 10 }}>
+                    <Link to="/mis-pedidos" style={{ color: "#19e6ff", fontWeight: 700 }}>
+                      Ver mis pedidos →
+                    </Link>
                   </div>
                 </div>
-              )}
-
-              <label style={{ display: 'grid', gap: 8 }}>
-                Monto a pagar (CLP)
-                <input
-                  className="form-control"
-                  type="text"
-                  value={`$${formatoCLP(monto)} CLP`}
-                  readOnly
-                  aria-readonly="true"
-                />
-                <small>
-                  El monto se calcula automáticamente con el total actual del carrito.
-                </small>
-              </label>
-
-              {error && (
-                <p
-                  role="alert"
-                  style={{ color: '#dc3545', margin: 0, fontWeight: 500 }}
-                >
-                  {error}
-                </p>
-              )}
-
-              <button
-                className="btn btn-success btn-block"
-                type="submit"
-                disabled={procesando || monto <= 0}
-              >
-                {procesando ? 'Procesando pago...' : `Pagar $${formatoCLP(monto)} CLP`}
-              </button>
-
-              <small>
-                Pago de demostración: no se realizan cobros bancarios reales.
-              </small>
-            </form>
-          )}
-        </section>
-
-        <aside className="cart-summary" style={{ padding: 24 }}>
-          <h2 style={{ marginTop: 0 }}>
-            Resumen de la compra
-          </h2>
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 12,
-              padding: '12px 0',
-              borderBottom: '1px solid #dee2e6'
-            }}
-          >
-            <span>
-              Productos (
-              {carrito.reduce(
-                (total, item) => total + Number(item.cantidad || 0),
-                0
-              )}
-              )
-            </span>
-
-            <strong>${formatoCLP(monto)}</strong>
+              </div>
+            )}
           </div>
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '14px 0'
-            }}
-          >
-            <strong>Total</strong>
-            <strong>${formatoCLP(monto)} CLP</strong>
-          </div>
-
-          <Link to="/carrito">
-            Volver al carrito
-          </Link>
-        </aside>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
+
+const labelStyle = {
+  display: "block",
+  fontSize: 12,
+  color: "#19e6ff",
+  fontWeight: 600,
+  marginBottom: 6,
+};
+
+const inputStyle = {
+  width: "100%",
+  padding: "11px 12px",
+  borderRadius: 8,
+  border: "1px solid #252a3a",
+  background: "#090c14",
+  color: "#fff",
+  fontSize: 13,
+  boxSizing: "border-box",
+};
