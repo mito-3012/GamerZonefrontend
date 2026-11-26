@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
 
-// Datos simulados de Regiones y Comunas de Chile
 const regionesYComunas = {
   "Región Metropolitana": ["Santiago", "Puente Alto", "Maipú", "La Florida"],
   "Valparaíso": ["Valparaíso", "Viña del Mar", "Quilpué", "Villa Alemana"],
   "Biobío": ["Concepción", "Talcahuano", "Los Ángeles", "San Pedro de la Paz"]
 };
 
-// --- FUNCIÓN PARA VALIDAR EL RUT CHILENO (Módulo 11) ---
 const validarRutChileno = (rutCompleto) => {
   if (!/^[0-9]+[-|‐]{1}[0-9kK]{1}$/.test(rutCompleto) && !/^[0-9]+[0-9kK]{1}$/.test(rutCompleto)) {
     return false;
@@ -34,7 +33,6 @@ const validarRutChileno = (rutCompleto) => {
   return dvCalculado === dv;
 };
 
-// --- FUNCIÓN PARA VALIDAR EL CORREO ---
 const validarCorreo = (correo) => {
   const regex = /^[a-zA-Z0-9._%+-]+@(duoc\.cl|profesor\.duoc\.cl|gmail\.com)$/i;
   return regex.test(correo);
@@ -42,6 +40,7 @@ const validarCorreo = (correo) => {
 
 export default function Registro() {
   const navigate = useNavigate();
+  const { registrarUsuario, cartCount } = useShop();
   const [cargando, setCargando] = useState(false);
 
   const initialState = {
@@ -71,25 +70,21 @@ export default function Registro() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // 1. Validar que no haya campos vacíos
     if (Object.values(formData).some(value => value.trim() === '')) {
       alert("Por favor, completa todos los campos del formulario.");
       return;
     }
 
-    // 2. Validar formato del RUT y Dígito Verificador
     if (!validarRutChileno(formData.run)) {
       alert("El RUT ingresado no es válido. Revisa el dígito verificador.");
       return;
     }
 
-    // 3. Validar el Correo Electrónico
     if (!validarCorreo(formData.email)) {
       alert("El correo debe contener un '@' y ser de dominio @duoc.cl, @profesor.duoc.cl o @gmail.com");
       return;
     }
 
-    // 4. Validar Contraseñas
     if (formData.password !== formData.passConfirm) {
       alert("Las contraseñas no coinciden.");
       return;
@@ -100,41 +95,23 @@ export default function Registro() {
       return;
     }
 
-    // --- ENVÍO REAL AL BACKEND (SPRING BOOT + BASE DE DATOS) ---
     setCargando(true);
-    try {
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
-      const response = await fetch(`${API_URL}/api/usuarios`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          run: formData.run.replace(/[^0-9kK]/g, '').toUpperCase(),
-          nombre: formData.name.trim(),
-          apellido: formData.lastname.trim(),
-          email: formData.email.trim().toLowerCase(),
-          password: formData.password,
-          region: formData.region,
-          comuna: formData.comuna,
-          direccion: `${formData.address.trim()}, ${formData.comuna}, ${formData.region}`
-        })
-      });
+    const exito = await registrarUsuario({
+      run: formData.run.replace(/[^0-9kK]/g, '').toUpperCase(),
+      nombre: formData.name.trim(),
+      apellido: formData.lastname.trim(),
+      email: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      region: formData.region,
+      comuna: formData.comuna,
+      direccion: `${formData.address.trim()}, ${formData.comuna}, ${formData.region}`,
+      rol: 'Cliente'
+    });
+    setCargando(false);
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data.error || data.message || "Error al registrar el usuario en la base de datos.");
-      }
-
-      alert(`¡Registro exitoso en la base de datos! Bienvenido ${formData.name}`);
+    if (exito) {
       setFormData(initialState);
       navigate('/login');
-    } catch (error) {
-      console.error("Error en registro:", error);
-      alert(`Error: ${error.message}`);
-    } finally {
-      setCargando(false);
     }
   };
 
@@ -150,7 +127,13 @@ export default function Registro() {
         <nav className="main-nav">
           <Link to="/">Home</Link>
           <Link to="/productos">Catálogo</Link>
+          <Link to="/login">Iniciar Sesión</Link>
         </nav>
+        <div className="header-right">
+          <Link to="/carrito" className="cart-btn">
+            🛒 Cart (<span id="cart-count">{cartCount}</span>)
+          </Link>
+        </div>
       </header>
 
       <main className="container flex-center">

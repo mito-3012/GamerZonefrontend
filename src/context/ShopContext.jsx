@@ -29,7 +29,7 @@ export const REGIONES_DATA = [
   { region: "Región de la Araucanía", comunas: ["Temuco", "Padre Las Casas", "Villarrica", "Pucón"] }
 ];
 
-const ShopContext = createContext();
+export const ShopContext = createContext();
 
 // ==========================================
 // 2. PROVEEDOR DEL CONTEXTO (ShopProvider)
@@ -50,12 +50,58 @@ export const ShopProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : USUARIOS_INICIALES;
   });
 
+  const [token, setToken] = useState(() => localStorage.getItem("token") || null);
+
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem("gamer_current_user") || localStorage.getItem("usuario");
     return saved ? JSON.parse(saved) : null;
   });
 
+  const [cargandoSesion, setCargandoSesion] = useState(true);
   const [descuentoAplicado, setDescuentoAplicado] = useState(0);
+
+  // ==========================================
+  // VALIDACIÓN Y PERSISTENCIA DE SESIÓN JWT AL RECARGAR (IE3.3.2)
+  // ==========================================
+  useEffect(() => {
+    const verificarSesionAlRecargar = () => {
+      const savedToken = localStorage.getItem("token");
+      const savedUser = localStorage.getItem("gamer_current_user") || localStorage.getItem("usuario");
+
+      if (savedToken && savedUser) {
+        try {
+          const payloadBase64 = savedToken.split('.')[1];
+          const payload = JSON.parse(atob(payloadBase64));
+          const tokenExpirado = payload.exp && (payload.exp * 1000 < Date.now());
+
+          if (tokenExpirado) {
+            logoutUser();
+          } else {
+            setToken(savedToken);
+            setCurrentUser(JSON.parse(savedUser));
+          }
+        } catch {
+          logoutUser();
+        }
+      } else if (!savedToken && savedUser) {
+        // Si había un usuario sin token JWT válido, limpia sesión insegura
+        logoutUser();
+      }
+      setCargandoSesion(false);
+    };
+
+    verificarSesionAlRecargar();
+  }, []);
+
+  // Helper para peticiones autenticadas con Bearer Token
+  const authHeaders = (extra = {}) => {
+    const currentToken = token || localStorage.getItem("token");
+    return {
+      'Content-Type': 'application/json',
+      ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+      ...extra,
+    };
+  };
 
   // Cargar productos reales desde Spring Boot al iniciar
   useEffect(() => {
@@ -80,6 +126,27 @@ export const ShopProvider = ({ children }) => {
     };
     cargarProductosBackend();
   }, []);
+
+  // Cargar lista de usuarios si el usuario autenticado es Administrador
+  useEffect(() => {
+    const cargarUsuariosBackend = async () => {
+      if (!token || currentUser?.rol?.toLowerCase() !== 'administrador') return;
+      try {
+        const res = await fetch(`${API_URL}/api/usuarios`, {
+          headers: authHeaders(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setUsuarios(data.map((u, idx) => normalizarUsuario(u, idx + 1)));
+          }
+        }
+      } catch {
+        // Mantiene respaldo local si falla
+      }
+    };
+    cargarUsuariosBackend();
+  }, [token, currentUser?.rol]);
 
   // SINCRONIZACIÓN CON LOCALSTORAGE
   useEffect(() => {
@@ -220,70 +287,73 @@ export const ShopProvider = ({ children }) => {
   };
 
   // ==========================================
-  // 4. AUTENTICACIÓN Y REGISTRO (CONECTADO A BACKEND)
+  // 4. AUTENTICACIÓN JWT Y REGISTRO (SPRING BOOT)
   // ==========================================
   const normalizarUsuario = (u, indexFallback = 1) => ({
     ...u,
+    id: u.id ?? u.idUsuario ?? indexFallback,
     idUsuario: u.idUsuario ?? u.id ?? indexFallback,
     nombre: u.nombre ?? u.name ?? 'Usuario',
     name: u.nombre ?? u.name ?? 'Usuario',
-    email: u.correo ?? u.email,
-    correo: u.correo ?? u.email,
+    email: u.email ?? u.correo,
+    correo: u.email ?? u.correo,
     rol: u.rol ?? u.role ?? 'Cliente',
     role: u.rol ?? u.role ?? 'Cliente',
   });
 
   const loginUser = async (email, password) => {
-    // 1. Intentar autenticar contra Spring Boot (MySQL)
     try {
-      const res = await fetch(`${API_URL}/api/usuarios/login`, {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ correo: email, email, password, contrasena: password })
+        body: JSON.stringify({ email, password })
       });
 
       if (res.ok) {
         const data = await res.json();
+        // Guardar token JWT en localStorage y estado
+        localStorage.setItem("token", data.token);
+        setToken(data.token);
+
         const userNormalizado = normalizarUsuario(data);
         setCurrentUser(userNormalizado);
         return { success: true, user: userNormalizado };
       }
+
+      const errorMsg = await res.text().catch(() => "");
+      return { success: false, message: errorMsg || "Correo o contraseña incorrectos" };
     } catch {
-      // Si el backend no responde, continúa al respaldo local
+      return { success: false, message: "No se pudo conectar con el servidor de autenticación" };
     }
-
-    // 2. Respaldo en usuarios locales
-    const idx = usuarios.findIndex(
-      u => (u.email || u.correo || '').toLowerCase() === email.toLowerCase() && u.password === password
-    );
-    if (idx !== -1) {
-      const userNormalizado = normalizarUsuario(usuarios[idx], idx + 1);
-      setCurrentUser(userNormalizado);
-      return { success: true, user: userNormalizado };
-    }
-
-    return { success: false, message: "Correo o contraseña incorrectos" };
   };
 
   const logoutUser = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("gamer_current_user");
+    localStorage.removeItem("usuario");
+    setToken(null);
     setCurrentUser(null);
   };
 
   const registrarUsuario = async (nuevoUsuario) => {
     try {
+      // Mapeado exacto a los campos @NotBlank de Usuario.java
       const payload = {
         run: nuevoUsuario.run,
         nombre: nuevoUsuario.nombre || nuevoUsuario.name,
-        apellidos: nuevoUsuario.apellidos || '',
-        correo: nuevoUsuario.email || nuevoUsuario.correo,
-        contrasena: nuevoUsuario.password,
-        direccion: nuevoUsuario.direccion || `${nuevoUsuario.comuna || ''}, ${nuevoUsuario.region || ''}`.trim(),
+        apellido: nuevoUsuario.apellido || nuevoUsuario.apellidos || 'Gamer',
+        email: nuevoUsuario.email || nuevoUsuario.correo,
+        password: nuevoUsuario.password || nuevoUsuario.contrasena,
+        telefono: nuevoUsuario.telefono || '900000000',
+        region: nuevoUsuario.region || 'Región Metropolitana',
+        comuna: nuevoUsuario.comuna || 'Santiago',
+        direccion: nuevoUsuario.direccion || 'Sin dirección especificada',
         rol: nuevoUsuario.rol || nuevoUsuario.role || 'Cliente'
       };
 
-      const res = await fetch(`${API_URL}/api/usuarios/registro`, {
+      const res = await fetch(`${API_URL}/api/usuarios`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(payload)
       });
 
@@ -295,44 +365,94 @@ export const ShopProvider = ({ children }) => {
         return true;
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.message || "El usuario con este RUN o correo ya se encuentra registrado.");
+        alert(err.message || "Error al registrar: verifica que el RUN o correo no estén duplicados.");
         return false;
       }
     } catch {
-      // Fallback local si el servidor está apagado
-      const existe = usuarios.some(
-        u => (u.email || u.correo || '').toLowerCase() === (nuevoUsuario.email || '').toLowerCase() || u.run === nuevoUsuario.run
-      );
-      if (existe) {
-        alert("El usuario con este RUN o correo ya se encuentra registrado.");
+      alert("Error de conexión con el servidor al registrar usuario.");
+      return false;
+    }
+  };
+
+  // ==========================================
+  // 5. FUNCIONES DE ADMINISTRACIÓN (CON JWT)
+  // ==========================================
+  const eliminarProductoAdmin = async (id) => {
+    if (!window.confirm("¿Estás seguro de eliminar este producto del inventario?")) return;
+
+    try {
+      const res = await fetch(`${API_URL}/api/productos/${id}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      });
+
+      if (res.ok || res.status === 204) {
+        setProductos(prev => prev.filter(p => (p.idProducto ?? p.id) !== Number(id)));
+        alert("Producto eliminado correctamente.");
+      } else if (res.status === 403 || res.status === 401) {
+        alert("No tienes permisos de Administrador para eliminar productos.");
+      } else {
+        alert("No se pudo eliminar el producto en el servidor.");
+      }
+    } catch {
+      alert("Error de conexión al eliminar producto.");
+    }
+  };
+
+  const agregarProductoAdmin = async (nuevoProducto) => {
+    try {
+      const res = await fetch(`${API_URL}/api/productos`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify(nuevoProducto),
+      });
+
+      if (res.ok) {
+        const creado = await res.json();
+        const normalizado = {
+          ...creado,
+          id: creado.idProducto ?? creado.id,
+          idProducto: creado.idProducto ?? creado.id,
+          categoria: typeof creado.categoria === 'object' ? creado.categoria?.nombre : (creado.categoria || nuevoProducto.categoria || 'General'),
+        };
+        setProductos(prev => [...prev, normalizado]);
+        alert("Producto agregado correctamente en la base de datos.");
+        return true;
+      } else if (res.status === 403 || res.status === 401) {
+        alert("No tienes permisos para crear productos.");
         return false;
       }
-
-      const usuarioConRol = normalizarUsuario(nuevoUsuario, usuarios.length + 1);
-      setUsuarios(prev => [...prev, usuarioConRol]);
-      alert("¡Usuario registrado exitosamente!");
-      return true;
+    } catch {
+      alert("Error de conexión al guardar el producto.");
+      return false;
     }
   };
 
-  // ==========================================
-  // 5. FUNCIONES DE ADMINISTRACIÓN
-  // ==========================================
-  const eliminarProductoAdmin = (id) => {
-    if (window.confirm("¿Estás seguro de eliminar este producto del inventario?")) {
-      setProductos(prev => prev.filter(p => (p.idProducto ?? p.id) !== Number(id)));
-    }
-  };
+  const eliminarUsuarioAdmin = async (run) => {
+    if (!window.confirm("¿Estás seguro de eliminar este usuario?")) return;
 
-  const agregarProductoAdmin = (nuevoProducto) => {
-    const id = Date.now();
-    setProductos(prev => [...prev, { ...nuevoProducto, id, idProducto: id }]);
-    alert("Producto agregado correctamente.");
-  };
+    const usuarioTarget = usuarios.find(u => u.run === run);
+    const idTarget = usuarioTarget?.id ?? usuarioTarget?.idUsuario;
 
-  const eliminarUsuarioAdmin = (run) => {
-    if (window.confirm("¿Estás seguro de eliminar este usuario?")) {
+    try {
+      if (idTarget) {
+        const res = await fetch(`${API_URL}/api/usuarios/${idTarget}`, {
+          method: 'DELETE',
+          headers: authHeaders(),
+        });
+
+        if (res.ok || res.status === 204) {
+          setUsuarios(prev => prev.filter(u => u.run !== run));
+          alert("Usuario eliminado correctamente.");
+          return;
+        } else if (res.status === 403 || res.status === 401) {
+          alert("No tienes permisos de Administrador para eliminar usuarios.");
+          return;
+        }
+      }
       setUsuarios(prev => prev.filter(u => u.run !== run));
+    } catch {
+      alert("Error de conexión al eliminar usuario.");
     }
   };
 
@@ -356,6 +476,8 @@ export const ShopProvider = ({ children }) => {
       setProductos,
       carrito,
       usuarios,
+      token,
+      cargandoSesion,
       currentUser,
       usuario: currentUser,
       descuentoAplicado,

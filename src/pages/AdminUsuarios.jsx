@@ -1,21 +1,40 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
 
 export default function AdminUsuarios() {
   const navigate = useNavigate();
+  const { usuarios, eliminarUsuarioAdmin, logoutUser, currentUser } = useShop();
 
   const cerrarSesionGamer = (e) => {
     e.preventDefault();
-    console.log('Cerrando sesión...');
+    logoutUser();
     navigate('/login');
   };
 
-  // Función para simular el reseteo de la contraseña
   const handleResetPassword = (nombre, run) => {
     const confirmar = window.confirm(`¿Estás seguro de que deseas resetear la contraseña de ${nombre}?`);
     if (confirmar) {
       alert(`✅ La contraseña de ${nombre} ha sido reseteada.\nSu nueva clave temporal es su RUN: ${run}`);
     }
+  };
+
+  const renderBadgeRol = (rol) => {
+    const r = (rol || '').toLowerCase();
+    if (r === 'administrador') {
+      return <span className="badge badge-admin">Administrador</span>;
+    }
+    if (r === 'vendedor') {
+      return (
+        <span
+          className="badge badge-warning"
+          style={{ backgroundColor: '#ffc107', color: '#000', padding: '4px 8px', borderRadius: '4px' }}
+        >
+          Vendedor
+        </span>
+      );
+    }
+    return <span className="badge badge-client">Cliente</span>;
   };
 
   return (
@@ -55,7 +74,7 @@ export default function AdminUsuarios() {
               Mantenedor de Usuarios
             </h1>
             <p style={{ marginTop: '5px', color: 'var(--text-muted)', fontSize: '1rem' }}>
-              Gestión e inspección de cuentas de usuario y roles del sistema.
+              Gestión e inspección de cuentas de usuario y roles del sistema en base de datos.
             </p>
           </div>
           <Link to="/admin-nuevo-usuario" className="btn btn-primary">
@@ -70,86 +89,57 @@ export default function AdminUsuarios() {
                 <th>RUN</th>
                 <th>Nombre</th>
                 <th>Correo</th>
-                <th>Contraseña</th> {/* Nueva columna */}
+                <th>Contraseña</th>
                 <th>Perfil</th>
                 <th>Región / Comuna</th>
-                <th>Acciones</th> {/* Columna de botones */}
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="admin-users-table">
-              {/* Usuario 1: Administrador */}
-              <tr>
-                <td>19011022K</td>
-                <td>Gonzalo Gamer</td>
-                <td>gonzalo@duoc.cl</td>
-                <td style={{ letterSpacing: '2px' }}>********</td>
-                <td>
-                  <span className="badge badge-admin">Administrador</span>
-                </td>
-                <td>Región Metropolitana / Santiago</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '5px' }}>
-                    <button 
-                      className="btn btn-sm btn-secondary" 
-                      onClick={() => handleResetPassword('Gonzalo Gamer', '19011022K')}
-                      style={{ backgroundColor: '#17a2b8' }}
-                    >
-                      🔑 Resetear Clave
-                    </button>
-                    <button className="btn btn-sm btn-danger">🗑️</button>
-                  </div>
-                </td>
-              </tr>
-
-              {/* Usuario 2: Cliente */}
-              <tr>
-                <td>201234567</td>
-                <td>Camila Player</td>
-                <td>camila@gmail.com</td>
-                <td style={{ letterSpacing: '2px' }}>********</td>
-                <td>
-                  <span className="badge badge-client">Cliente</span>
-                </td>
-                <td>Región de la Araucanía / Temuco</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '5px' }}>
-                    <button 
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => handleResetPassword('Camila Player', '201234567')}
-                      style={{ backgroundColor: '#17a2b8' }}
-                    >
-                      🔑 Resetear Clave
-                    </button>
-                    <button className="btn btn-sm btn-danger">🗑️</button>
-                  </div>
-                </td>
-              </tr>
-
-              {/* Usuario 3: Empleado / Vendedor */}
-              <tr>
-                <td>156667778</td>
-                <td>Carlos Vendedor</td>
-                <td>carlos@tiendagamer.cl</td>
-                <td style={{ letterSpacing: '2px' }}>********</td>
-                <td>
-                  <span className="badge badge-warning" style={{ backgroundColor: '#ffc107', color: '#000', padding: '4px 8px', borderRadius: '4px' }}>
-                    Vendedor
-                  </span>
-                </td>
-                <td>Región de Valparaíso / Viña del Mar</td>
-                <td>
-                  <div style={{ display: 'flex', gap: '5px' }}>
-                    <button 
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => handleResetPassword('Carlos Vendedor', '156667778')}
-                      style={{ backgroundColor: '#17a2b8' }}
-                    >
-                      🔑 Resetear Clave
-                    </button>
-                    <button className="btn btn-sm btn-danger">🗑️</button>
-                  </div>
-                </td>
-              </tr>
+              {usuarios.length === 0 ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '24px' }}>
+                    No hay usuarios registrados.
+                  </td>
+                </tr>
+              ) : (
+                usuarios.map((u, idx) => {
+                  const nombreCompleto = `${u.nombre || ''} ${u.apellido || ''}`.trim();
+                  const esMismoUsuario = currentUser?.email === u.email;
+                  return (
+                    <tr key={u.id || u.run || idx}>
+                      <td>{u.run}</td>
+                      <td>{nombreCompleto}</td>
+                      <td>{u.email}</td>
+                      <td style={{ letterSpacing: '2px' }}>********</td>
+                      <td>{renderBadgeRol(u.rol)}</td>
+                      <td>
+                        {u.region || 'N/A'} / {u.comuna || 'N/A'}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '5px' }}>
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => handleResetPassword(nombreCompleto, u.run)}
+                            style={{ backgroundColor: '#17a2b8' }}
+                          >
+                            🔑 Resetear Clave
+                          </button>
+                          {!esMismoUsuario && (
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => eliminarUsuarioAdmin(u.run)}
+                              title="Eliminar usuario"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

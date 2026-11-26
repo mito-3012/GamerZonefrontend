@@ -1,23 +1,33 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 
-const API_URL = "http://localhost:8080/api";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8080").replace(/\/$/, "") + "/api";
 const ESTADOS_PEDIDO = ["PENDIENTE", "PAGADO", "ENVIADO", "ENTREGADO", "CANCELADO"];
 
 export default function AdminPedidos() {
-  const { currentUser } = useShop();
+  const { currentUser, token } = useShop();
   const [pedidos, setPedidos] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [filtroEstado, setFiltroEstado] = useState("TODOS");
   const [busqueda, setBusqueda] = useState("");
   const [cargando, setCargando] = useState(true);
 
+  const getAuthHeaders = () => {
+    const jwtToken = token || localStorage.getItem("token");
+    return {
+      "Content-Type": "application/json",
+      ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {})
+    };
+  };
+
   const cargarDatos = async () => {
     try {
       setCargando(true);
+      const headers = getAuthHeaders();
       const [respPedidos, respPagos] = await Promise.all([
-        fetch(`${API_URL}/pedidos`),
-        fetch(`${API_URL}/pagos`)
+        fetch(`${API_URL}/pedidos`, { headers }),
+        fetch(`${API_URL}/pagos`, { headers })
       ]);
 
       const dataPedidos = respPedidos.ok ? await respPedidos.json() : [];
@@ -35,13 +45,13 @@ export default function AdminPedidos() {
 
   useEffect(() => {
     cargarDatos();
-  }, []);
+  }, [token]);
 
   const cambiarEstadoPedido = async (pedido, nuevoEstado) => {
     try {
       const resp = await fetch(`${API_URL}/pedidos/${pedido.idPedido}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           ...pedido,
           estado: nuevoEstado
@@ -80,10 +90,13 @@ export default function AdminPedidos() {
     .filter((p) => p.estado !== "CANCELADO")
     .reduce((acc, p) => acc + Number(p.total || 0), 0);
 
-  if (currentUser && currentUser.rol !== "Admin") {
+  const rolActual = (currentUser?.rol || "").toLowerCase();
+  const esStaff = rolActual === "administrador" || rolActual === "vendedor";
+
+  if (currentUser && !esStaff) {
     return (
       <div className="container py-5 text-center text-white">
-        <div className="alert alert-danger">Acceso restringido: solo para administradores.</div>
+        <div className="alert alert-danger">Acceso restringido: solo para administradores o vendedores.</div>
       </div>
     );
   }
@@ -98,12 +111,16 @@ export default function AdminPedidos() {
             <strong className="text-success">${totalVentas.toLocaleString("es-CL")}</strong>
           </p>
         </div>
-        <button className="btn btn-outline-info" onClick={cargarDatos}>
-          Actualizar Lista
-        </button>
+        <div className="d-flex gap-2">
+          <Link to="/admin-home" className="btn btn-outline-light">
+            Volver al Panel
+          </Link>
+          <button className="btn btn-outline-info" onClick={cargarDatos}>
+            Actualizar Lista
+          </button>
+        </div>
       </div>
 
-      {/* Filtros */}
       <div className="row g-3 mb-4">
         <div className="col-md-6">
           <input

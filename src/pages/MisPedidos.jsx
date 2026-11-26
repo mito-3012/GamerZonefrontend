@@ -2,10 +2,10 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useShop } from "../context/ShopContext";
 
-const API_URL = "http://localhost:8080/api";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8080").replace(/\/$/, "") + "/api";
 
 export default function MisPedidos() {
-  const { currentUser } = useShop();
+  const { currentUser, token } = useShop();
   const [pedidos, setPedidos] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -18,12 +18,24 @@ export default function MisPedidos() {
         return;
       }
 
+      const jwtToken = token || localStorage.getItem("token");
+      const headers = {
+        "Content-Type": "application/json",
+        ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {})
+      };
+
       try {
         setCargando(true);
         const [respPedidos, respPagos] = await Promise.all([
-          fetch(`${API_URL}/pedidos`),
-          fetch(`${API_URL}/pagos`)
+          fetch(`${API_URL}/pedidos`, { headers }),
+          fetch(`${API_URL}/pagos`, { headers })
         ]);
+
+        if (respPedidos.status === 401 || respPedidos.status === 403) {
+          setError("Tu sesión expiró. Por favor, inicia sesión nuevamente.");
+          setCargando(false);
+          return;
+        }
 
         const dataPedidos = respPedidos.ok ? await respPedidos.json() : [];
         const dataPagos = respPagos.ok ? await respPagos.json() : [];
@@ -37,7 +49,6 @@ export default function MisPedidos() {
           return (userId && pUserId === userId) || (userEmail && pEmail === userEmail);
         });
 
-        // Ordenar del más reciente al más antiguo
         misPedidos.sort((a, b) => Number(b.idPedido) - Number(a.idPedido));
 
         setPedidos(misPedidos);
@@ -51,7 +62,7 @@ export default function MisPedidos() {
     };
 
     cargarHistorial();
-  }, [currentUser]);
+  }, [currentUser, token]);
 
   const obtenerPagoDePedido = (idPedido) => {
     return pagos.find((pg) => Number(pg.idPedido ?? pg.pedido?.idPedido) === Number(idPedido));

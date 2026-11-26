@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { loginUser, cartCount } = useShop();
 
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+  const [cargando, setCargando] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -17,35 +20,30 @@ export default function Login() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const { email, password } = formData;
 
-    // Validación de campos vacíos
     if (!email || !password) {
       alert('Por favor, ingresa tu correo y contraseña.');
       return;
     }
 
-    // --- SIMULACIÓN DE LOGIN ---
-    // Credenciales del Administrador (usando los datos del mantenedor)
-    if (email === 'gonzalo@duoc.cl' && password === '19011022K') {
-      alert('¡Bienvenido Administrador!');
-      navigate('/admin-home'); // Redirige al panel de administración
-    } 
-    // Credenciales del Cliente
-    else if (email === 'camila@gmail.com' && password === '201234567') {
-      alert('¡Bienvenida Camila!');
-      navigate('/'); // Redirige a la tienda principal
-    } 
-    // Credenciales del Vendedor
-    else if (email === 'carlos@tiendagamer.cl' && password === '156667778') {
-      alert('¡Bienvenido Carlos!');
-      navigate('/admin-home'); // Redirige a su panel correspondiente
-    } 
-    // Si las credenciales no coinciden
-    else {
-      alert('Correo o contraseña incorrectos. Inténtalo de nuevo.');
+    setCargando(true);
+    const resultado = await loginUser(email, password);
+    setCargando(false);
+
+    if (resultado.success) {
+      const rol = resultado.user.rol?.toLowerCase();
+      alert(`¡Bienvenido ${resultado.user.nombre} (${resultado.user.rol})!`);
+
+      if (rol === 'administrador' || rol === 'vendedor') {
+        navigate('/admin-home');
+      } else {
+        navigate('/');
+      }
+    } else {
+      alert(resultado.message || 'Correo o contraseña incorrectos. Inténtalo de nuevo.');
     }
   };
 
@@ -67,7 +65,7 @@ export default function Login() {
 
         <div className="header-right">
           <Link to="/carrito" className="cart-btn">
-            🛒 Cart (<span id="cart-count">0</span>)
+            🛒 Cart (<span id="cart-count">{cartCount}</span>)
           </Link>
         </div>
       </header>
@@ -111,8 +109,8 @@ export default function Login() {
               <span className="error-message" id="err-login-pass"></span>
             </div>
 
-            <button type="submit" className="btn btn-outline btn-block">
-              INGRESAR
+            <button type="submit" className="btn btn-outline btn-block" disabled={cargando}>
+              {cargando ? 'INGRESANDO...' : 'INGRESAR'}
             </button>
           </form>
         </div>

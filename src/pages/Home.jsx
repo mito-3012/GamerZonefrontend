@@ -6,6 +6,9 @@ export default function Home() {
   const { currentUser, logoutUser, cartCount } = useShop();
   const [newsletterEmail, setNewsletterEmail] = useState('');
 
+  const rolActual = (currentUser?.rol || '').toLowerCase();
+  const esStaff = rolActual === 'administrador' || rolActual === 'vendedor';
+
   const handleSubscribe = (e) => {
     e.preventDefault();
     alert(`Suscrito al boletín con: ${newsletterEmail}`);
@@ -23,20 +26,24 @@ export default function Home() {
         <nav className="main-nav">
           <Link to="/" className="active">Home</Link>
           <Link to="/productos">Catálogo</Link>
-          <Link to="/lista-deseos">Deseos</Link>
-          <Link to="/mis-pedidos">Mis Pedidos</Link>
+          {currentUser && <Link to="/lista-deseos">Deseos</Link>}
+          {currentUser && <Link to="/mis-pedidos">Mis Pedidos</Link>}
           <Link to="/nosotros">Nosotros</Link>
           <Link to="/blogs">Noticias</Link>
           <Link to="/contacto">Contacto</Link>
-          {currentUser?.rol === 'Admin' && (
-            <Link to="/admin-home" style={{ color: 'var(--primary-cyan)' }}>Admin</Link>
+          {esStaff && (
+            <Link to="/admin-home" style={{ color: 'var(--primary-cyan)', fontWeight: 'bold' }}>
+              Panel Admin
+            </Link>
           )}
         </nav>
 
         <div className="header-right">
           {currentUser ? (
             <>
-              <span style={{ marginRight: '8px' }}>👤 {currentUser.nombre || currentUser.email}</span>
+              <span style={{ marginRight: '8px' }}>
+                👤 {currentUser.nombre || currentUser.email} ({currentUser.rol})
+              </span>
               <button
                 type="button"
                 onClick={logoutUser}

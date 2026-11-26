@@ -2,73 +2,45 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useShop } from '../context/ShopContext';
 
-const API_URL = 'http://localhost:8080/api';
+const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8080').replace(/\/$/, '') + '/api';
 
 export default function AdminHome() {
   const navigate = useNavigate();
-  const { logoutUser } = useShop();
+  const { productos, cartCount, logoutUser, currentUser, token } = useShop();
+  const [totalPedidos, setTotalPedidos] = useState(0);
 
-  const [stats, setStats] = useState({
-    totalProducts: 0,
-    lowStock: 0,
-    cartItems: 0,
-    totalPedidos: 0
-  });
-
-  // Lista del inventario
-  const [productos, setProductos] = useState([]);
+  const esAdmin = (currentUser?.rol || '').toLowerCase() === 'administrador';
 
   useEffect(() => {
-    const cargarDashboard = async () => {
-      let storedProducts = [];
-      let storedCart = [];
-
+    const cargarPedidosDashboard = async () => {
+      const jwtToken = token || localStorage.getItem('token');
       try {
-        const prodData = localStorage.getItem('productos') || localStorage.getItem('gamer_products');
-        const cartData = localStorage.getItem('gamer_cart') || localStorage.getItem('carrito');
-
-        if (prodData) storedProducts = JSON.parse(prodData);
-        if (cartData) storedCart = JSON.parse(cartData);
-      } catch (error) {
-        console.error('Error al leer el localStorage:', error);
-      }
-
-      if (!Array.isArray(storedProducts)) storedProducts = [];
-      if (!Array.isArray(storedCart)) storedCart = [];
-
-      const total = storedProducts.length;
-      const low = storedProducts.filter(producto => producto.stock < 10).length;
-      const cartCount = storedCart.reduce((acc, item) => acc + (item.cantidad || 1), 0);
-
-      let cantidadPedidos = 0;
-      try {
-        const respPedidos = await fetch(`${API_URL}/pedidos`);
+        const respPedidos = await fetch(`${API_URL}/pedidos`, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {})
+          }
+        });
         if (respPedidos.ok) {
           const dataPedidos = await respPedidos.json();
-          cantidadPedidos = Array.isArray(dataPedidos) ? dataPedidos.length : 0;
+          setTotalPedidos(Array.isArray(dataPedidos) ? dataPedidos.length : 0);
         }
       } catch (err) {
         console.warn('No se pudo obtener el conteo de pedidos desde el backend:', err);
       }
-
-      setStats({
-        totalProducts: total,
-        lowStock: low,
-        cartItems: cartCount,
-        totalPedidos: cantidadPedidos
-      });
-
-      setProductos(storedProducts);
     };
 
-    cargarDashboard();
-  }, []);
+    cargarPedidosDashboard();
+  }, [token]);
 
   const cerrarSesionGamer = (e) => {
     e.preventDefault();
     if (logoutUser) logoutUser();
     navigate('/login');
   };
+
+  const totalProducts = productos.length;
+  const lowStock = productos.filter((p) => Number(p.stock) < 10).length;
 
   return (
     <div className="admin-body">
@@ -78,7 +50,7 @@ export default function AdminHome() {
           <Link to="/admin-home" className="active">📊 DASHBOARD</Link>
           <Link to="/admin-productos">🎮 INVENTARIO</Link>
           <Link to="/admin-pedidos">📦 PEDIDOS</Link>
-          <Link to="/admin-usuarios">👥 USUARIOS</Link>
+          {esAdmin && <Link to="/admin-usuarios">👥 USUARIOS</Link>}
           <Link to="/">🛍️ IR A TIENDA</Link>
           <a
             href="#"
@@ -95,7 +67,7 @@ export default function AdminHome() {
           PANEL ADMINISTRATIVO GAMERZONE
         </h1>
         <p style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '1.1rem' }}>
-          Resumen en tiempo real del estado de la tienda.
+          Bienvenido, <strong>{currentUser?.nombre}</strong> ({currentUser?.rol}). Resumen en tiempo real de la tienda.
         </p>
 
         {/* SECCIÓN 1: TARJETAS DEL DASHBOARD */}
@@ -117,7 +89,7 @@ export default function AdminHome() {
                 marginTop: '10px',
               }}
             >
-              {stats.totalProducts}
+              {totalProducts}
             </p>
           </div>
 
@@ -133,7 +105,7 @@ export default function AdminHome() {
                 marginTop: '10px',
               }}
             >
-              {stats.lowStock}
+              {lowStock}
             </p>
           </div>
 
@@ -147,7 +119,7 @@ export default function AdminHome() {
                 marginTop: '10px',
               }}
             >
-              {stats.cartItems}
+              {cartCount}
             </p>
           </div>
 
@@ -165,7 +137,7 @@ export default function AdminHome() {
                 marginTop: '10px',
               }}
             >
-              {stats.totalPedidos}
+              {totalPedidos}
             </p>
           </Link>
         </div>
@@ -191,8 +163,8 @@ export default function AdminHome() {
                 </thead>
                 <tbody>
                   {productos.map((prod, index) => (
-                    <tr key={index} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-                      <td style={{ padding: '15px' }}>{prod.id || index + 1}</td>
+                    <tr key={prod.idProducto ?? prod.id ?? index} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                      <td style={{ padding: '15px' }}>{prod.codigo || prod.idProducto || prod.id || index + 1}</td>
                       <td style={{ padding: '15px' }}>{prod.nombre || prod.titulo}</td>
                       <td style={{ padding: '15px' }}>${Number(prod.precio || 0).toLocaleString('es-CL')}</td>
                       <td style={{ 

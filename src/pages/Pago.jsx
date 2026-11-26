@@ -11,9 +11,8 @@ const formatoCLP = (valor) =>
 
 export default function Pago({ usuario: usuarioProp, direccionDespacho: direccionProp }) {
   const shop = useShop();
-  const { carrito = [], totalCarrito = 0, vaciarCarrito } = shop;
+  const { carrito = [], totalCarrito = 0, vaciarCarrito, token } = shop;
 
-  // Resuelve el usuario desde props, contexto o localStorage (soporta id o idUsuario)
   const usuarioStorage = (() => {
     try {
       return JSON.parse(localStorage.getItem('usuario') || 'null');
@@ -33,7 +32,6 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
 
-  // Estados para el simulador de tarjeta
   const [datosTarjeta, setDatosTarjeta] = useState({
     numero: '',
     titular: usuarioActual ? `${usuarioActual.nombre || ''} ${usuarioActual.apellido || ''}`.trim() : '',
@@ -44,20 +42,26 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
   const esTarjeta = metodoPago === 'TARJETA_CREDITO' || metodoPago === 'TARJETA_DEBITO';
   const monto = Number(totalCarrito || 0);
 
+  const getAuthHeaders = () => {
+    const jwtToken = token || localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      ...(jwtToken ? { Authorization: `Bearer ${jwtToken}` } : {})
+    };
+  };
+
   const handleTarjetaChange = (e) => {
     const { name, value } = e.target;
     setDatosTarjeta((prev) => ({ ...prev, [name]: value }));
   };
 
-  // 1. Crea el pedido en el backend y recibe su ID generado
+  // 1. Crea el pedido en el backend autenticado con JWT y recibe su ID generado
   const crearPedido = async () => {
     const response = await fetch(
       `${API_URL}/api/pedidos/crear-desde-carrito`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           idUsuario: idUsuarioFinal,
           direccionDespacho: direccion.trim(),
@@ -68,6 +72,10 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
         })
       }
     );
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Tu sesión expiró o no tienes permisos. Inicia sesión nuevamente.');
+    }
 
     const pedido = await response.json().catch(() => ({}));
 
@@ -84,9 +92,7 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
     const totalGenerado = pedido.total ?? monto;
 
     if (!idPedidoGenerado) {
-      throw new Error(
-        'El backend no devolvió el ID del pedido.'
-      );
+      throw new Error('El backend no devolvió el ID del pedido.');
     }
 
     return {
@@ -96,13 +102,11 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
     };
   };
 
-  // 2. Registra el pago utilizando el pedido generado
+  // 2. Registra el pago utilizando el pedido generado y el token JWT
   const registrarPago = async (pedido) => {
     const response = await fetch(`${API_URL}/api/pagos`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         idPedido: pedido.idPedido,
         metodoPago,
@@ -111,6 +115,10 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
         titularTarjeta: esTarjeta ? datosTarjeta.titular : null
       })
     });
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('No autorizado para procesar el pago. Inicia sesión nuevamente.');
+    }
 
     const data = await response.json().catch(() => ({}));
 
@@ -153,18 +161,13 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
     setProcesando(true);
 
     try {
-      // 1. Crear el pedido
       const pedido = await crearPedido();
-
-      // 2. Registrar el pago con el ID generado
       const pago = await registrarPago(pedido);
 
-      // 3. Vaciar carrito si la función existe en el contexto
       if (typeof vaciarCarrito === 'function') {
         vaciarCarrito();
       }
 
-      // 4. Mostrar la confirmación
       setResultado({
         ...pago,
         idPedido: pedido.idPedido,
@@ -222,9 +225,14 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
                 </p>
               )}
 
-              <Link className="btn btn-primary" to="/productos">
-                Volver a la tienda
-              </Link>
+              <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+                <Link className="btn btn-primary" to="/mis-pedidos">
+                  Ver mis pedidos
+                </Link>
+                <Link className="btn btn-outline" to="/productos">
+                  Volver a la tienda
+                </Link>
+              </div>
             </div>
           ) : (
             <form
@@ -281,7 +289,6 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
                 ))}
               </div>
 
-              {/* --- SIMULADOR VISUAL DE TARJETA (Se abre automáticamente al elegir Débito o Crédito) --- */}
               {esTarjeta && (
                 <div
                   style={{
@@ -293,7 +300,6 @@ export default function Pago({ usuario: usuarioProp, direccionDespacho: direccio
                     gap: 14
                   }}
                 >
-                  {/* Tarjeta gráfica simulada */}
                   <div
                     style={{
                       background: 'linear-gradient(135deg, #1a1f36 0%, #0d6efd 100%)',

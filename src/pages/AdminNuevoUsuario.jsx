@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useShop } from '../context/ShopContext';
+
+const regionesYComunas = {
+  "Región Metropolitana": ["Santiago", "Puente Alto", "Maipú", "La Florida", "Las Condes"],
+  "Valparaíso": ["Valparaíso", "Viña del Mar", "Quilpué", "Villa Alemana"],
+  "Biobío": ["Concepción", "Talcahuano", "Los Ángeles", "San Pedro de la Paz"]
+};
 
 export default function AdminNuevoUsuario() {
   const navigate = useNavigate();
+  const { registrarUsuario, logoutUser } = useShop();
 
   const [formData, setFormData] = useState({
     role: '',
@@ -10,6 +18,8 @@ export default function AdminNuevoUsuario() {
     name: '',
     lastname: '',
     email: '',
+    password: '',
+    telefono: '',
     region: '',
     comuna: '',
     address: '',
@@ -19,51 +29,63 @@ export default function AdminNuevoUsuario() {
 
   const handleChange = (e) => {
     const { id, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [id]: value,
-    }));
+    setFormData((prev) => {
+      const updated = { ...prev, [id]: value };
+      if (id === 'region') updated.comuna = '';
+      return updated;
+    });
   };
 
   const cerrarSesionGamer = (e) => {
     e.preventDefault();
-    console.log('Cerrando sesión...');
+    logoutUser();
     navigate('/login');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.role || !formData.run || !formData.name || !formData.email) {
-      alert('Por favor, completa al menos los campos obligatorios (Rol, RUN, Nombre, Email).');
+    if (
+      !formData.role ||
+      !formData.run ||
+      !formData.name ||
+      !formData.lastname ||
+      !formData.email ||
+      !formData.password ||
+      !formData.region ||
+      !formData.comuna ||
+      !formData.address
+    ) {
+      alert('Por favor, completa todos los campos obligatorios.');
+      return;
+    }
+
+    if (formData.password.length < 4) {
+      alert('La contraseña debe tener al menos 4 caracteres.');
       return;
     }
 
     setIsLoading(true);
+    const exito = await registrarUsuario({
+      run: formData.run.replace(/[^0-9kK]/g, '').toUpperCase(),
+      nombre: formData.name.trim(),
+      apellido: formData.lastname.trim(),
+      email: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      telefono: formData.telefono.trim() || '900000000',
+      region: formData.region,
+      comuna: formData.comuna,
+      direccion: formData.address.trim(),
+      rol: formData.role,
+    });
+    setIsLoading(false);
 
-    try {
-      const response = await fetch('http://tu-api-backend.com/api/usuarios', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (response.ok) {
-        alert('¡Usuario creado exitosamente!');
-        navigate('/admin-usuarios');
-      } else {
-        const errorData = await response.json();
-        alert(`Error al crear el usuario: ${errorData.message || 'Intenta nuevamente.'}`);
-      }
-    } catch (error) {
-      console.error('Error de red al crear usuario:', error);
-      alert('Error de conexión. Verifica si el servidor está funcionando.');
-    } finally {
-      setIsLoading(false);
+    if (exito) {
+      navigate('/admin-usuarios');
     }
   };
+
+  const comunasDisponibles = formData.region ? regionesYComunas[formData.region] : [];
 
   return (
     <div className="admin-body">
@@ -90,7 +112,7 @@ export default function AdminNuevoUsuario() {
           NUEVO USUARIO (ADMINISTRACIÓN)
         </h1>
         <p style={{ marginTop: '10px', color: 'var(--text-muted)', fontSize: '1rem' }}>
-          Registra un nuevo usuario asignándole un perfil de acceso específico.
+          Registra un nuevo usuario en la base de datos asignándole un perfil de acceso específico.
         </p>
 
         <div className="form-card wide-card" style={{ marginTop: '25px' }}>
@@ -147,16 +169,29 @@ export default function AdminNuevoUsuario() {
               </div>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="email">CORREO ELECTRÓNICO</label>
-              <input
-                type="email"
-                id="email"
-                className="form-control"
-                placeholder="correo@ejemplo.com"
-                value={formData.email}
-                onChange={handleChange}
-              />
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="email">CORREO ELECTRÓNICO</label>
+                <input
+                  type="email"
+                  id="email"
+                  className="form-control"
+                  placeholder="correo@ejemplo.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="password">CONTRASEÑA (Mín. 4 carac.)</label>
+                <input
+                  type="password"
+                  id="password"
+                  className="form-control"
+                  placeholder="Ej: 19011022K"
+                  value={formData.password}
+                  onChange={handleChange}
+                />
+              </div>
             </div>
 
             <div className="form-row">
@@ -169,7 +204,11 @@ export default function AdminNuevoUsuario() {
                   onChange={handleChange}
                 >
                   <option value="">-- Seleccione --</option>
-                  <option value="RM">Metropolitana</option>
+                  {Object.keys(regionesYComunas).map((region) => (
+                    <option key={region} value={region}>
+                      {region}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
@@ -179,9 +218,14 @@ export default function AdminNuevoUsuario() {
                   className="form-control"
                   value={formData.comuna}
                   onChange={handleChange}
+                  disabled={!formData.region}
                 >
                   <option value="">-- Seleccione --</option>
-                  <option value="Puente Alto">Puente Alto</option>
+                  {comunasDisponibles.map((comuna) => (
+                    <option key={comuna} value={comuna}>
+                      {comuna}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

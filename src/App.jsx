@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 // Vistas públicas y de cliente
 import Home from './pages/Home';
@@ -25,7 +26,7 @@ import AdminPedidos from './pages/AdminPedidos';
 
 export default function App() {
   
-  // Carga de inventario inicial por defecto
+  // Carga de inventario inicial por defecto (respaldo si no hay datos previos)
   useEffect(() => {
     const inventarioInicial = [
       {
@@ -84,33 +85,99 @@ export default function App() {
     
     if (!productosGuardados || JSON.parse(productosGuardados).length === 0) {
       localStorage.setItem('productos', JSON.stringify(inventarioInicial));
-      console.log('Inventario inicial cargado exitosamente.');
     }
   }, []);
 
   return (
     <Routes>
-      {/* Rutas Públicas y Cliente */}
+      {/* Rutas Públicas */}
       <Route path="/" element={<Home />} />
       <Route path="/productos" element={<Productos />} />
       <Route path="/producto/:id" element={<DetalleProducto />} />
       <Route path="/carrito" element={<Carrito />} />
-      <Route path="/pago" element={<Pago />} />
       <Route path="/login" element={<Login />} />
       <Route path="/registro" element={<Registro />} />
       <Route path="/nosotros" element={<Nosotros />} />
       <Route path="/blogs" element={<Blogs />} />
       <Route path="/contacto" element={<Contacto />} />
-      <Route path="/mis-pedidos" element={<MisPedidos />} />
-      <Route path="/lista-deseos" element={<ListaDeseos />} />
 
-      {/* Rutas Admin */}
-      <Route path="/admin-home" element={<AdminHome />} />
-      <Route path="/admin-productos" element={<AdminProductos />} />
-      <Route path="/admin-usuarios" element={<AdminUsuarios />} />
-      <Route path="/admin-nuevo-producto" element={<AdminNuevoProducto />} />
-      <Route path="/admin-nuevo-usuario" element={<AdminNuevoUsuario />} />
-      <Route path="/admin-pedidos" element={<AdminPedidos />} />
+      {/* Rutas que requieren sesión iniciada (cualquier rol autenticado) */}
+      <Route
+        path="/pago"
+        element={
+          <ProtectedRoute>
+            <Pago />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/mis-pedidos"
+        element={
+          <ProtectedRoute>
+            <MisPedidos />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/lista-deseos"
+        element={
+          <ProtectedRoute>
+            <ListaDeseos />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Rutas de Panel de Administración / Ventas */}
+      <Route
+        path="/admin-home"
+        element={
+          <ProtectedRoute allowedRoles={['Administrador', 'Vendedor']}>
+            <AdminHome />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin-productos"
+        element={
+          <ProtectedRoute allowedRoles={['Administrador', 'Vendedor']}>
+            <AdminProductos />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin-nuevo-producto"
+        element={
+          <ProtectedRoute allowedRoles={['Administrador', 'Vendedor']}>
+            <AdminNuevoProducto />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin-pedidos"
+        element={
+          <ProtectedRoute allowedRoles={['Administrador', 'Vendedor']}>
+            <AdminPedidos />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Rutas exclusivas de Administrador */}
+      <Route
+        path="/admin-usuarios"
+        element={
+          <ProtectedRoute allowedRoles={['Administrador']}>
+            <AdminUsuarios />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin-nuevo-usuario"
+        element={
+          <ProtectedRoute allowedRoles={['Administrador']}>
+            <AdminNuevoUsuario />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }
